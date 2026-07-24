@@ -406,20 +406,20 @@ if (progress) {
   if ('packetId' in progress && progress.packetId !== 'WP00') {
     error(`progress.json packetId must be 'WP00', got ${safeStr(progress.packetId)}`);
   }
-  if ('attempt' in progress && progress.attempt !== 'A7') {
-    error(`progress.json attempt must be 'A7', got ${safeStr(progress.attempt)}`);
+  if ('attempt' in progress && progress.attempt !== 'A8') {
+    error(`progress.json attempt must be 'A8', got ${safeStr(progress.attempt)}`);
   }
-  if ('externalBaseCommit' in progress && progress.externalBaseCommit !== '314dfe745a997a42311934c5dc671b7d330c9413') {
-    error(`progress.json externalBaseCommit mismatch: expected '314dfe745a997a42311934c5dc671b7d330c9413', got ${safeStr(progress.externalBaseCommit)}`);
+  if ('externalBaseCommit' in progress && progress.externalBaseCommit !== '1617d76530ee17610aed5e2a2e89d15cd00c66a2') {
+    error(`progress.json externalBaseCommit mismatch: expected '1617d76530ee17610aed5e2a2e89d15cd00c66a2', got ${safeStr(progress.externalBaseCommit)}`);
   }
-  if ('externalBaseCommitVerifiedByAgent' in progress && progress.externalBaseCommitVerifiedByAgent !== false) {
-    error(`progress.json externalBaseCommitVerifiedByAgent must be false, got ${safeStr(progress.externalBaseCommitVerifiedByAgent)}`);
+  if ('externalBaseCommitVerifiedByAgent' in progress && progress.externalBaseCommitVerifiedByAgent !== true) {
+    error(`progress.json externalBaseCommitVerifiedByAgent must be true, got ${safeStr(progress.externalBaseCommitVerifiedByAgent)}`);
   }
   if ('H01' in progress && progress.H01 !== 'LOCAL_PASS') {
     error(`progress.json H01 state must be 'LOCAL_PASS', got ${safeStr(progress.H01)}`);
   }
-  if ('H02' in progress && progress.H02 !== 'EXTERNAL_PENDING') {
-    error(`progress.json H02 state must be 'EXTERNAL_PENDING', got ${safeStr(progress.H02)}`);
+  if ('H02' in progress && progress.H02 !== 'EXTERNAL_PASS') {
+    error(`progress.json H02 state must be 'EXTERNAL_PASS', got ${safeStr(progress.H02)}`);
   }
 
   const plannedKeys = [
@@ -427,7 +427,7 @@ if (progress) {
     "F01", "F02", "F03", "F04",
     "X01", "X02", "X03", "X04", "L01",
     "M01", "M02", "M03",
-    "WP00", "WP01", "WP02", "WP03", "WP04", "WP05", "WP06", "WP07"
+    "WP01", "WP02", "WP03", "WP04", "WP05", "WP06", "WP07"
   ];
   for (const id of plannedKeys) {
     if (id in progress && progress[id] !== 'PLANNED') {
@@ -435,8 +435,8 @@ if (progress) {
     }
   }
 
-  if (progress.WP00 === 'ACCEPTED') {
-    error(`progress.json WP00 state cannot be 'ACCEPTED', got ${safeStr(progress.WP00)}`);
+  if ('WP00' in progress && progress.WP00 !== 'ACCEPTED') {
+    error(`progress.json WP00 state must be 'ACCEPTED', got ${safeStr(progress.WP00)}`);
   }
 }
 

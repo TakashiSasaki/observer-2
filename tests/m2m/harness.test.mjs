@@ -166,14 +166,14 @@ test('H01が LOCAL_PASS 以外の場合を拒否する', () => {
   assert.match(res.output, /H01 state must be 'LOCAL_PASS'/);
 });
 
-test('H02が EXTERNAL_PENDING 以外の場合を拒否する', () => {
+test('H02が EXTERNAL_PASS 以外の場合を拒否する', () => {
   const tmp = setupTemp();
   updateFile(tmp, 'progress.json', d => {
-    d['H02'] = 'EXTERNAL_PASS';
+    d['H02'] = 'EXTERNAL_PENDING';
   });
   const res = runVerify(tmp);
   assert.strictEqual(res.success, false);
-  assert.match(res.output, /H02 state must be 'EXTERNAL_PENDING'/);
+  assert.match(res.output, /H02 state must be 'EXTERNAL_PASS'/);
 });
 
 test('F01、F04、またはその他の未実施自動検証が PLANNED 以外の場合を拒否する', () => {
@@ -202,14 +202,14 @@ test('F01、F04、またはその他の未実施自動検証が PLANNED 以外�
   assert.match(res.output, /progress.json D01 state must be 'PLANNED'/);
 });
 
-test('WP00が ACCEPTED の場合を拒否する', () => {
+test('WP00が ACCEPTED 以外の場合を拒否する', () => {
   const tmp = setupTemp();
   updateFile(tmp, 'progress.json', d => {
-    d['WP00'] = 'ACCEPTED';
+    d['WP00'] = 'PLANNED';
   });
   const res = runVerify(tmp);
   assert.strictEqual(res.success, false);
-  assert.match(res.output, /WP00 state cannot be 'ACCEPTED'/);
+  assert.match(res.output, /WP00 state must be 'ACCEPTED'/);
 });
 
 test('SHA-256不一致を拒否する', () => {
@@ -233,7 +233,7 @@ test('requirements.jsonをraw JSON構文エラーにし、progress.jsonのH02を
   const res = runVerify(tmp);
   assert.strictEqual(res.success, false);
   assert.match(res.output, /Syntax error in requirements\.json/);
-  assert.match(res.output, /H02 state must be 'EXTERNAL_PENDING'/);
+  assert.match(res.output, /H02 state must be 'EXTERNAL_PASS'/);
 });
 
 test('R12をすべての非メタ検証から外し、H01だけにR12を追加した場合、固定対応不一致とカバレッジ診断が出ること', () => {
@@ -276,10 +276,10 @@ test('packetId、attempt、externalBaseCommit、externalBaseCommitVerifiedByAgen
   });
   res = runVerify(tmp);
   assert.strictEqual(res.success, false);
-  assert.match(res.output, /attempt must be 'A7'/);
+  assert.match(res.output, /attempt must be 'A8'/);
 
   updateFile(tmp, 'progress.json', d => {
-    d['attempt'] = 'A7';
+    d['attempt'] = 'A8';
     d['externalBaseCommit'] = 'badcommit';
   });
   res = runVerify(tmp);
@@ -287,12 +287,12 @@ test('packetId、attempt、externalBaseCommit、externalBaseCommitVerifiedByAgen
   assert.match(res.output, /externalBaseCommit mismatch/);
 
   updateFile(tmp, 'progress.json', d => {
-    d['externalBaseCommit'] = '314dfe745a997a42311934c5dc671b7d330c9413';
-    d['externalBaseCommitVerifiedByAgent'] = true;
+    d['externalBaseCommit'] = '1617d76530ee17610aed5e2a2e89d15cd00c66a2';
+    d['externalBaseCommitVerifiedByAgent'] = false;
   });
   res = runVerify(tmp);
   assert.strictEqual(res.success, false);
-  assert.match(res.output, /externalBaseCommitVerifiedByAgent must be false/);
+  assert.match(res.output, /externalBaseCommitVerifiedByAgent must be true/);
 });
 
 // New A6 regression tests
@@ -309,7 +309,7 @@ test('D02の requirementIds を {"toString": null} などのオブジェクト�
   const res = runVerify(tmp);
   assert.strictEqual(res.success, false);
   assert.match(res.output, /requirementIds mismatch for D02/);
-  assert.match(res.output, /H02 state must be 'EXTERNAL_PENDING'/);
+  assert.match(res.output, /H02 state must be 'EXTERNAL_PASS'/);
   assert.doesNotMatch(res.output, /TypeError/);
   assert.doesNotMatch(res.output, /Cannot convert object to primitive value/);
 });
@@ -326,7 +326,7 @@ test('F01の executionPlane を {"toString": null} のようなオブジェク�
   const res = runVerify(tmp);
   assert.strictEqual(res.success, false);
   assert.match(res.output, /executionPlane mismatch for F01/);
-  assert.match(res.output, /H02 state must be 'EXTERNAL_PENDING'/);
+  assert.match(res.output, /H02 state must be 'EXTERNAL_PASS'/);
   assert.doesNotMatch(res.output, /TypeError/);
 });
 
@@ -339,7 +339,7 @@ test('progress.json の packetId をオブジェクトにし、H02をLOCAL_PASS�
   const res = runVerify(tmp);
   assert.strictEqual(res.success, false);
   assert.match(res.output, /packetId must be 'WP00'/);
-  assert.match(res.output, /H02 state must be 'EXTERNAL_PENDING'/);
+  assert.match(res.output, /H02 state must be 'EXTERNAL_PASS'/);
   assert.doesNotMatch(res.output, /TypeError/);
 });
 
@@ -445,7 +445,7 @@ test('verification-catalog.json の D01 などを null にし、同時に progre
   const res = runVerify(tmp);
   assert.strictEqual(res.success, false);
   assert.match(res.output, /verification-catalog item D01 must be an object, got null/);
-  assert.match(res.output, /progress\.json H02 state must be 'EXTERNAL_PENDING'/);
+  assert.match(res.output, /progress\.json H02 state must be 'EXTERNAL_PASS'/);
   assert.doesNotMatch(res.output, /TypeError/);
 });
 
@@ -495,7 +495,7 @@ test('progress.json の必須キー欠落と未知キー追加を拒否する', 
   assert.match(res.output, /Unknown keys in progress\.json: extraKey/);
 });
 
-test('M01〜M03およびWP00〜WP07のいずれかを PLANNED 以外に変更した場合を拒否する', () => {
+test('M01〜M03およびWP01〜WP07のいずれかを PLANNED 以外に変更した場合を拒否する', () => {
   const tmp = setupTemp();
   updateFile(tmp, 'progress.json', d => {
     d['M01'] = 'LOCAL_PASS';

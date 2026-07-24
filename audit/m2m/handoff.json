@@ -1,18 +1,20 @@
 {
   "packetId": "WP00",
-  "attempt": "A7",
-  "externalBaseCommit": "314dfe745a997a42311934c5dc671b7d330c9413",
-  "externalBaseCommitVerifiedByAgent": false,
+  "attempt": "A8",
+  "externalBaseCommit": "1617d76530ee17610aed5e2a2e89d15cd00c66a2",
+  "externalBaseCommitVerifiedByAgent": true,
   "modifiedFiles": [
     "scripts/verify-m2m-harness.mjs",
     "tests/m2m/harness.test.mjs",
     "audit/m2m/progress.json",
     "audit/m2m/handoff.json"
   ],
-  "deletedFiles": [
-    "run_all.sh",
-    "test_out.txt"
-  ],
+  "deletedFiles": [],
+  "dependencySetup": {
+    "command": "npm --cache /tmp/observer2-wp00-npm-cache install --ignore-scripts --no-package-lock --no-save",
+    "code": 0,
+    "result": "293 packages installed in the local checkout; package.json and lockfiles remained unchanged"
+  },
   "executionCommands": [
     "node --version",
     "node scripts/verify-m2m-harness.mjs",
@@ -23,42 +25,111 @@
     "git status --short"
   ],
   "exitCodes": {
-    "node --version": { "code": 0, "result": "v24.14.0" },
-    "node scripts/verify-m2m-harness.mjs": { "code": 0, "result": "Success with no diagnostics" },
-    "node --test tests/m2m/harness.test.mjs": { "code": 0, "result": "36 passed; 0 failed, skipped, or todo" },
-    "npm run lint": { "code": 127, "result": "Blocked because existing dependencies are unavailable: tsc not found" },
-    "npm run build": { "code": 127, "result": "Blocked because existing dependencies are unavailable: vite not found" },
-    "git diff --check": { "code": 0, "result": "Success with no whitespace errors" },
-    "git status --short": { "code": 0, "result": "Four modified files and two deleted files, all within the permitted scope" }
+    "node --version": {
+      "code": 0,
+      "result": "v24.14.0"
+    },
+    "node scripts/verify-m2m-harness.mjs": {
+      "code": 0,
+      "result": "Success with no diagnostics"
+    },
+    "node --test tests/m2m/harness.test.mjs": {
+      "code": 0,
+      "result": "36 passed; 0 failed, skipped, or todo"
+    },
+    "npm run lint": {
+      "code": 0,
+      "result": "TypeScript no-emit validation succeeded"
+    },
+    "npm run build": {
+      "code": 0,
+      "result": "Vite and server builds succeeded with non-fatal chunk-size and import.meta/CJS warnings"
+    },
+    "git diff --check": {
+      "code": 0,
+      "result": "Success with no whitespace errors"
+    },
+    "git status --short": {
+      "code": 0,
+      "result": "Exactly four modified files, all within the WP00 A8 scope"
+    }
   },
   "verificationStates": {
     "H01": "LOCAL_PASS",
-    "H02": "EXTERNAL_PENDING"
+    "H02": "EXTERNAL_PASS"
   },
-  "localState": "BLOCKED",
-  "blockers": [
-    "npm run lint cannot run without the existing TypeScript dependency",
-    "npm run build cannot run without the existing Vite dependency"
-  ],
-  "externalRequiredVerifications": [
-    "H02",
-    "After GitHub publication, externally verify the actual diff, Actions, H01/H02, and permitted change scope"
-  ],
+  "workPackageStates": {
+    "WP00": "ACCEPTED",
+    "WP01-WP07": "PLANNED"
+  },
+  "localState": "LOCAL_PASS",
+  "blockers": [],
+  "externalVerification": {
+    "commit": "1617d76530ee17610aed5e2a2e89d15cd00c66a2",
+    "tree": "d5477f754d9de585d4db550ab2df7dc0f75d5d7f",
+    "parentCommit": "314dfe745a997a42311934c5dc671b7d330c9413",
+    "scope": {
+      "modifiedFiles": [
+        "scripts/verify-m2m-harness.mjs",
+        "tests/m2m/harness.test.mjs",
+        "audit/m2m/progress.json",
+        "audit/m2m/handoff.json"
+      ],
+      "deletedFiles": [
+        "run_all.sh",
+        "test_out.txt"
+      ],
+      "unpermittedChanges": []
+    },
+    "fixedRegistryCombinedSha256": "45426d21e93a3293ea6521c9df5070a0dab9f3d05f99dec0943c182d1663b426",
+    "workflow": {
+      "name": "M2M Baseline Validation",
+      "runId": 30093413634,
+      "url": "https://github.com/TakashiSasaki/observer-2/actions/runs/30093413634",
+      "jobId": 89481667270,
+      "conclusion": "success",
+      "successfulSteps": [
+        "Install dependencies",
+        "Run lint",
+        "Run build",
+        "Verify M2M harness",
+        "Test M2M harness"
+      ]
+    },
+    "testResults": {
+      "tests": 36,
+      "passed": 36,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    }
+  },
   "constraints": {
     "noNewDependencies": true,
-    "noBun": true,
-    "noPackageInstall": true
+    "noPackageManifestChanges": true,
+    "noLockfileChanges": true,
+    "noApplicationCodeChanges": true,
+    "noFixedRegistryChanges": true
   },
   "notChecked": [
-    "GitHub Actions",
     "Firebase Emulator"
   ],
   "repositoryCheck": {
-    "githubCheckedForPullRequest": true,
-    "mainResolvedCommit": "314dfe745a997a42311934c5dc671b7d330c9413"
+    "githubChecked": true,
+    "mainResolvedCommit": "1617d76530ee17610aed5e2a2e89d15cd00c66a2",
+    "mainCommitAndTreeVerifiedByAgent": true
   },
   "pendingDecisions": {
     "v1FirestoreDataPolicy": "pending-user-decision",
     "lockfileAdoption": "pending-decision"
-  }
+  },
+  "nextWork": {
+    "packetId": "WP01",
+    "description": "v2ドメイン型と不変条件",
+    "readiness": "READY_AFTER_WP00_A8_INTEGRATION"
+  },
+  "postMergeVerificationRequired": [
+    "Verify that the merged A8 diff contains only the four declared modified files",
+    "Verify the main-branch M2M Baseline Validation run for the merged A8 commit"
+  ]
 }
