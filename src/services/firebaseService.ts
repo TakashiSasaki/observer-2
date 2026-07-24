@@ -3,9 +3,6 @@ import {
   getDocs,
   getDoc,
   doc,
-  setDoc,
-  updateDoc,
-  deleteDoc,
   writeBatch,
   query,
   where,
@@ -15,7 +12,7 @@ import {
 } from 'firebase/firestore';
 import { signInWithPopup, signInAnonymously, signOut, User } from 'firebase/auth';
 import { db, auth, googleProvider } from '../firebase';
-import { ObservationSet, VisibilityType, ObserverUser } from '../types';
+import { ObservationSet, VisibilityType, ObserverUser, CURRENT_SCHEMA_VERSION } from '../types';
 import { ObservationSetModel } from '../models/ObservationSetModel';
 import { processImageToWebP } from '../utils/imageUtils';
 
@@ -98,18 +95,14 @@ export async function createObservation(obsData: Omit<ObservationSet, 'id'> & { 
       // 2. Save individual sub-observations to /singleObservations collection if present
       if (model.observations && model.observations.length > 0) {
         for (const singleObs of model.observations) {
-          const childVis = singleObs.visibility || model.visibility;
-          const childAllowed = childVis === 'shared'
-            ? (singleObs.allowedEmails && singleObs.allowedEmails.length > 0 ? singleObs.allowedEmails : model.allowedEmails || [])
-            : [];
           const singleRef = doc(db, 'singleObservations', singleObs.id);
           batch.set(singleRef, {
             ...singleObs,
             parentSetId: model.id,
             uid: model.uid,
-            visibility: childVis,
-            allowedEmails: childAllowed,
-            schemaVersion: singleObs.schemaVersion || '1.0.0',
+            visibility: model.visibility,
+            allowedEmails: model.visibility === 'shared' ? (model.allowedEmails || []) : [],
+            schemaVersion: CURRENT_SCHEMA_VERSION,
             createdAt: Timestamp.now(),
           });
         }
@@ -221,44 +214,46 @@ export async function updateObservationVisibility(
   allowedEmails: string[] = [],
   observationIds?: string[]
 ): Promise<void> {
+  if (!auth.currentUser) {
+    throw new Error('Authentication required');
+  }
+
   const sanitizedAllowedEmails = newVisibility === 'shared' ? allowedEmails : [];
 
-  if (auth.currentUser) {
-    let targetChildIds = observationIds;
-    if (!targetChildIds) {
-      const parentSnap = await getDoc(doc(db, COLLECTION_NAME, id));
-      if (!parentSnap.exists()) {
-        throw new Error('Parent document not found');
-      }
-      const pData = parentSnap.data();
-      if (!Array.isArray(pData.observationIds)) {
-        throw new Error('observationIds is missing in canonical data');
-      }
-      targetChildIds = pData.observationIds;
+  let targetChildIds = observationIds;
+  if (!targetChildIds || !Array.isArray(targetChildIds)) {
+    const parentSnap = await getDoc(doc(db, COLLECTION_NAME, id));
+    if (!parentSnap.exists()) {
+      throw new Error('Parent document not found');
     }
-
-    const childIds = targetChildIds;
-    if (childIds.length + 1 > 500) {
-      throw new Error('更新対象の観測件数がバッチ書き込み上限（500件）を超えています。');
+    const pData = parentSnap.data();
+    if (!Array.isArray(pData.observationIds)) {
+      throw new Error('observationIds is missing in canonical data or is not an array');
     }
+    targetChildIds = pData.observationIds;
+  }
 
-    const batch = writeBatch(db);
-    const parentRef = doc(db, COLLECTION_NAME, id);
-    batch.update(parentRef, {
+  const childIds = targetChildIds;
+  if (childIds.length + 1 > 500) {
+    throw new Error('更新対象の観測件数がバッチ書き込み上限（500件）を超えています。');
+  }
+
+  const batch = writeBatch(db);
+  const parentRef = doc(db, COLLECTION_NAME, id);
+  batch.update(parentRef, {
+    visibility: newVisibility,
+    allowedEmails: sanitizedAllowedEmails,
+  });
+
+  for (const childId of childIds) {
+    const childRef = doc(db, 'singleObservations', childId);
+    batch.update(childRef, {
       visibility: newVisibility,
       allowedEmails: sanitizedAllowedEmails,
     });
-
-    for (const childId of childIds) {
-      const childRef = doc(db, 'singleObservations', childId);
-      batch.update(childRef, {
-        visibility: newVisibility,
-        allowedEmails: sanitizedAllowedEmails,
-      });
-    }
-
-    await batch.commit();
   }
+
+  await batch.commit();
 
   // Sync local cache
   const local = getLocalObservations();
@@ -286,36 +281,38 @@ export async function deleteObservation(
   id: string,
   observationIds?: string[]
 ): Promise<void> {
-  if (auth.currentUser) {
-    let targetChildIds = observationIds;
-    if (!targetChildIds) {
-      const parentSnap = await getDoc(doc(db, COLLECTION_NAME, id));
-      if (!parentSnap.exists()) {
-        throw new Error('Parent document not found');
-      }
-      const pData = parentSnap.data();
-      if (!Array.isArray(pData.observationIds)) {
-        throw new Error('observationIds is missing in canonical data');
-      }
-      targetChildIds = pData.observationIds;
-    }
-
-    const childIds = targetChildIds;
-    if (childIds.length + 1 > 500) {
-      throw new Error('削除対象の観測件数がバッチ書き込み上限（500件）を超えています。');
-    }
-
-    const batch = writeBatch(db);
-    const parentRef = doc(db, COLLECTION_NAME, id);
-    batch.delete(parentRef);
-
-    for (const childId of childIds) {
-      const childRef = doc(db, 'singleObservations', childId);
-      batch.delete(childRef);
-    }
-
-    await batch.commit();
+  if (!auth.currentUser) {
+    throw new Error('Authentication required');
   }
+
+  let targetChildIds = observationIds;
+  if (!targetChildIds || !Array.isArray(targetChildIds)) {
+    const parentSnap = await getDoc(doc(db, COLLECTION_NAME, id));
+    if (!parentSnap.exists()) {
+      throw new Error('Parent document not found');
+    }
+    const pData = parentSnap.data();
+    if (!Array.isArray(pData.observationIds)) {
+      throw new Error('observationIds is missing in canonical data or is not an array');
+    }
+    targetChildIds = pData.observationIds;
+  }
+
+  const childIds = targetChildIds;
+  if (childIds.length + 1 > 500) {
+    throw new Error('削除対象の観測件数がバッチ書き込み上限（500件）を超えています。');
+  }
+
+  const batch = writeBatch(db);
+  const parentRef = doc(db, COLLECTION_NAME, id);
+  batch.delete(parentRef);
+
+  for (const childId of childIds) {
+    const childRef = doc(db, 'singleObservations', childId);
+    batch.delete(childRef);
+  }
+
+  await batch.commit();
 
   // Sync local cache
   const local = getLocalObservations();

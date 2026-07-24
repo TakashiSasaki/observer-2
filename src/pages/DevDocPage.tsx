@@ -320,7 +320,8 @@ service cloud.firestore {
                      (resource.data.visibility == 'shared' && isEmailAllowed()) ||
                      isDocOwner();
       allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
-      allow update, delete: if isDocOwner() && request.resource.data.uid == resource.data.uid;
+      allow update: if isDocOwner() && request.resource.data.uid == resource.data.uid;
+      allow delete: if isDocOwner();
     }
 
     match /observations/{obsSetId} {
@@ -328,7 +329,8 @@ service cloud.firestore {
                      (resource.data.visibility == 'authenticated' && isAuthenticated()) ||
                      (resource.data.visibility == 'shared' && isEmailAllowed()) || isDocOwner();
       allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
-      allow update, delete: if isDocOwner() && request.resource.data.uid == resource.data.uid;
+      allow update: if isDocOwner() && request.resource.data.uid == resource.data.uid;
+      allow delete: if isDocOwner();
     }
   }
 }`}

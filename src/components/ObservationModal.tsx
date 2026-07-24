@@ -66,10 +66,11 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({
 
   // Helper to parse allowed emails text input
   const parseAllowedEmails = (text: string): string[] => {
-    return text
-      .split(/[\n,;\s]+/)
+    const parsed = text
+      .split(/[,;\n\s]+/)
       .map((e) => e.trim())
-      .filter((e) => e.length > 0 && e.includes('@'));
+      .filter((e) => e && e.includes('@') && e.indexOf('@') > 0 && e.indexOf('@') < e.length - 1);
+    return [...new Set(parsed)];
   };
 
   // Fetch position when modal opens

@@ -38,7 +38,8 @@ service cloud.firestore {
 
       allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
 
-      allow update, delete: if isDocOwner() && request.resource.data.uid == resource.data.uid;
+      allow update: if isDocOwner() && request.resource.data.uid == resource.data.uid;
+      allow delete: if isDocOwner();
     }
 
     // Observation Sets Collection (観測セットデータ: observationIds 配列で複数観測を参照可能)
@@ -51,8 +52,11 @@ service cloud.firestore {
       // CREATE: Authenticated user creating document with their own UID
       allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
 
-      // UPDATE & DELETE: Document owner only, cannot change owner
-      allow update, delete: if isDocOwner() && request.resource.data.uid == resource.data.uid;
+      // UPDATE: Document owner only, cannot change owner
+      allow update: if isDocOwner() && request.resource.data.uid == resource.data.uid;
+
+      // DELETE: Document owner only
+      allow delete: if isDocOwner();
     }
   }
 }

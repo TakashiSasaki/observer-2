@@ -1,3 +1,5 @@
+export const CURRENT_SCHEMA_VERSION = '1.0.0' as const;
+
 export type VisibilityType = 'public' | 'authenticated' | 'shared' | 'private';
 
 export type ObservationType = 'nfc' | 'qr' | 'object' | 'ocr' | 'manual';
@@ -41,7 +43,7 @@ export interface Observation {
   imagePath?: string; // Cloud Storage バケット内参照パス (例: observations/{id}.webp)
   location?: LocationData;
   visibility: VisibilityType;
-  allowedEmails?: string[];
+  allowedEmails: string[];
   metadata?: ObservationMetadata;
   schemaVersion: string;
   createdAt: string;
@@ -60,7 +62,7 @@ export interface ObservationSet {
   imagePath?: string; // Cloud Storage バケット内参照パス (例: observations/{id}.webp)
   location?: LocationData;
   visibility: VisibilityType;
-  allowedEmails?: string[];
+  allowedEmails: string[];
   tags: string[];
   metadata?: ObservationMetadata;
   observationIds: string[]; // 参照用: 複数のセットから参照可能な個別観測IDリスト

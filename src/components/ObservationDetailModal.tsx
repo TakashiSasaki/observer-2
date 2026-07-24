@@ -277,11 +277,14 @@ export const ObservationDetailModal: React.FC<ObservationDetailModalProps> = ({
                             if (!emails || !emails.trim()) {
                                return;
                             }
-                            const parsed = emails.split(',').map(e => e.trim()).filter(Boolean);
-                            if (parsed.length === 0) {
+                            const parsed = emails.split(/[,;\n\s]+/)
+                              .map(e => e.trim())
+                              .filter(e => e && e.includes('@') && e.indexOf('@') > 0 && e.indexOf('@') < e.length - 1);
+                            const uniqueParsed = [...new Set(parsed)];
+                            if (uniqueParsed.length === 0) {
                                return;
                             }
-                            onVisibilityChange(observation.id, key as VisibilityType, parsed);
+                            onVisibilityChange(observation.id, key as VisibilityType, uniqueParsed);
                          } else {
                             onVisibilityChange(observation.id, key as VisibilityType, observation.allowedEmails);
                          }

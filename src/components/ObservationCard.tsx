@@ -257,12 +257,15 @@ export const ObservationCard: React.FC<ObservationCardProps> = ({
                                setShowVisibilityMenu(false);
                                return;
                             }
-                            const parsed = emails.split(',').map(e => e.trim()).filter(Boolean);
-                            if (parsed.length === 0) {
+                            const parsed = emails.split(/[,;\n\s]+/)
+                              .map(e => e.trim())
+                              .filter(e => e && e.includes('@') && e.indexOf('@') > 0 && e.indexOf('@') < e.length - 1);
+                            const uniqueParsed = [...new Set(parsed)];
+                            if (uniqueParsed.length === 0) {
                                setShowVisibilityMenu(false);
                                return;
                             }
-                            onVisibilityChange(observation.id, vKey, parsed);
+                            onVisibilityChange(observation.id, vKey, uniqueParsed);
                          } else {
                             onVisibilityChange(observation.id, vKey, observation.allowedEmails);
                          }
