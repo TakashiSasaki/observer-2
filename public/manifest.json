@@ -1,0 +1,19 @@
+{
+  "short_name": "OBSERVE",
+  "name": "Field Observer Hub - 観測ログ管理",
+  "description": "現地観測データ統合管理システム",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512 any",
+      "purpose": "any maskable"
+    }
+  ]
+}

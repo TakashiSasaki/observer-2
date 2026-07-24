@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: #F0F2F5;
+  }
+}
+
+.mono, .font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* High Density Observation Card Accent Border & States */
+.obs-card {
+  border-left: 4px solid transparent;
+  transition: all 0.15s ease-in-out;
+}
+
+.obs-card:hover {
+  border-left-color: #3B82F6;
+  background-color: #F8FAFC;
+}
+
+.obs-card.active {
+  border-left-color: #2563EB;
+  background-color: #EFF6FF;
+}
+

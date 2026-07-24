@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f1f5f9"/>
+      <stop offset="100%" stop-color="#e2e8f0"/>
+    </linearGradient>
+
+    <!-- Blade Gradients -->
+    <linearGradient id="bladeGreen" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="bladeYellow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a"/>
+      <stop offset="100%" stop-color="#eab308"/>
+    </linearGradient>
+    <linearGradient id="bladeRed" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fb7185"/>
+      <stop offset="100%" stop-color="#e11d48"/>
+    </linearGradient>
+    <linearGradient id="bladePurple" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e879f9"/>
+      <stop offset="100%" stop-color="#a21caf"/>
+    </linearGradient>
+    <linearGradient id="bladeOrange" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffedd5"/>
+      <stop offset="100%" stop-color="#ea580c"/>
+    </linearGradient>
+    <linearGradient id="bladeBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+
+    <!-- Cloud Center Gradient -->
+    <linearGradient id="cloudGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+
+    <!-- Hologram Glitter Pattern Effect -->
+    <pattern id="glitter" width="20" height="20" patternUnits="userSpaceOnUse">
+      <circle cx="5" cy="5" r="1.5" fill="#ffffff" opacity="0.4"/>
+      <circle cx="15" cy="12" r="1" fill="#ffffff" opacity="0.5"/>
+      <circle cx="12" cy="18" r="1.2" fill="#ffffff" opacity="0.3"/>
+    </pattern>
+
+    <!-- Drop Shadow Filter -->
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#0f172a" flood-opacity="0.2"/>
+    </filter>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#0f172a" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- Canvas App Icon Base -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)"/>
+  
+  <!-- Outer Subtle Ring -->
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="none" stroke="#ffffff" stroke-width="4" opacity="0.6"/>
+
+  <!-- Pinwheel Group -->
+  <g filter="url(#shadow)">
+    <!-- Stick/Pole behind pinwheel -->
+    <rect x="246" y="256" width="20" height="210" rx="10" fill="#334155"/>
+
+    <!-- Pinwheel Blades (6 Blades) -->
+    <g transform="translate(256, 230)">
+      <!-- Blade 1: Top (Green) -->
+      <g transform="rotate(0)">
+        <path d="M 0 0 C -30 -60, -50 -130, 0 -170 C 40 -150, 50 -80, 0 0 Z" fill="url(#bladeGreen)"/>
+        <path d="M 0 0 C -30 -60, -50 -130, 0 -170 C 40 -150, 50 -80, 0 0 Z" fill="url(#glitter)"/>
+      </g>
+
+      <!-- Blade 2: Top-Right (Yellow) -->
+      <g transform="rotate(60)">
+        <path d="M 0 0 C -30 -60, -50 -130, 0 -170 C 40 -150, 50 -80, 0 0 Z" fill="url(#bladeYellow)"/>
+        <path d="M 0 0 C -30 -60, -50 -130, 0 -170 C 40 -150, 50 -80, 0 0 Z" fill="url(#glitter)"/>
+      </g>
+
+      <!-- Blade 3: Bottom-Right (Red) -->
+      <g transform="rotate(120)">
+        <path d="M 0 0 C -30 -60, -50 -130, 0 -170 C 40 -150, 50 -80, 0 0 Z" fill="url(#bladeRed)"/>
+        <path d="M 0 0 C -30 -60, -50 -130, 0 -170 C 40 -150, 50 -80, 0 0 Z" fill="url(#glitter)"/>
+      </g>
+
+      <!-- Blade 4: Bottom (Purple) -->
+      <g transform="rotate(180)">
+        <path d="M 0 0 C -30 -60, -50 -130, 0 -170 C 40 -150, 50 -80, 0 0 Z" fill="url(#bladePurple)"/>
+        <path d="M 0 0 C -30 -60, -50 -130, 0 -170 C 40 -150, 50 -80, 0 0 Z" fill="url(#glitter)"/>
+      </g>
+
+      <!-- Blade 5: Bottom-Left (Orange) -->
+      <g transform="rotate(240)">
+        <path d="M 0 0 C -30 -60, -50 -130, 0 -170 C 40 -150, 50 -80, 0 0 Z" fill="url(#bladeOrange)"/>
+        <path d="M 0 0 C -30 -60, -50 -130, 0 -170 C 40 -150, 50 -80, 0 0 Z" fill="url(#glitter)"/>
+      </g>
+
+      <!-- Blade 6: Top-Left (Blue) -->
+      <g transform="rotate(300)">
+        <path d="M 0 0 C -30 -60, -50 -130, 0 -170 C 40 -150, 50 -80, 0 0 Z" fill="url(#bladeBlue)"/>
+        <path d="M 0 0 C -30 -60, -50 -130, 0 -170 C 40 -150, 50 -80, 0 0 Z" fill="url(#glitter)"/>
+      </g>
+    </g>
+
+    <!-- Center Cloud Plate -->
+    <g transform="translate(256, 230)" filter="url(#softShadow)">
+      <!-- Cloud Shape -->
+      <path d="M -60 10 
+               A 35 35 0 0 1 -50 -35 
+               A 45 45 0 0 1 10 -50 
+               A 40 40 0 0 1 65 -15 
+               A 35 35 0 0 1 60 25 
+               A 30 30 0 0 1 0 40 
+               A 40 40 0 0 1 -60 10 Z" 
+            fill="url(#cloudGrad)" 
+            stroke="#ffffff" 
+            stroke-width="5"/>
+
+      <!-- Small White Accent Clouds inside plate -->
+      <path d="M -50 20 A 12 12 0 0 1 -30 10 A 15 15 0 0 1 -10 22 Z" fill="#ffffff" opacity="0.9"/>
+      <path d="M 20 -30 A 10 10 0 0 1 40 -25 A 12 12 0 0 1 45 -12 Z" fill="#ffffff" opacity="0.9"/>
+
+      <!-- Small Balloons / Rainbow accent -->
+      <path d="M 40 0 A 18 18 0 0 0 54 18" fill="none" stroke="#facc15" stroke-width="3" stroke-linecap="round"/>
+      <path d="M 44 -4 A 18 18 0 0 0 58 14" fill="none" stroke="#f43f5e" stroke-width="3" stroke-linecap="round"/>
+
+      <!-- Hello! Text with slight tilt -->
+      <g transform="rotate(-8) translate(-5, 8)">
+        <!-- Text Shadow for readability -->
+        <text x="0" y="0" text-anchor="middle" font-family="'Comic Sans MS', 'Fredoka', 'Arial Round', sans-serif" font-weight="900" font-size="32" fill="#0284c7" dx="2" dy="2">Hello!</text>
+        <text x="0" y="0" text-anchor="middle" font-family="'Comic Sans MS', 'Fredoka', 'Arial Round', sans-serif" font-weight="900" font-size="32" fill="#facc15" stroke="#ffffff" stroke-width="2">Hello!</text>
+      </g>
+    </g>
+  </g>
+</svg>

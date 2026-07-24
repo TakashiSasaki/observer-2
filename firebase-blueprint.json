@@ -1,0 +1,99 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profiles",
+      "description": "Profile information of observers",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "email": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName"]
+    },
+    "singleObservations": {
+      "title": "Single Observation",
+      "description": "Individual observation entry belonging to an ObservationSet or standalone",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "parentSetId": { "type": "string" },
+        "uid": { "type": "string" },
+        "observerName": { "type": "string" },
+        "observerPhoto": { "type": "string" },
+        "type": { "type": "string", "enum": ["nfc", "qr", "object", "ocr", "manual"] },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "rawContent": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "imagePath": { "type": "string", "description": "Cloud Storage path reference" },
+        "location": {
+          "type": "object",
+          "properties": {
+            "latitude": { "type": "number" },
+            "longitude": { "type": "number" },
+            "accuracy": { "type": "number" },
+            "address": { "type": "string" }
+          }
+        },
+        "visibility": { "type": "string", "enum": ["private", "authenticated", "shared", "public"] },
+        "allowedEmails": { "type": "array", "items": { "type": "string" } },
+        "metadata": { "type": "object" },
+        "schemaVersion": { "type": "string", "description": "Schema version, defaults to 1.0.0" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "uid", "type", "title", "createdAt", "schemaVersion"]
+    },
+    "observations": {
+      "title": "Observation Set",
+      "description": "Multi-modal observation entries/clusters captured by observers",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "userId": { "type": "string", "description": "Legacy field for user ID compatibility" },
+        "observerName": { "type": "string" },
+        "observerPhoto": { "type": "string" },
+        "type": { "type": "string", "enum": ["nfc", "qr", "object", "ocr", "manual"] },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "rawContent": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "imagePath": { "type": "string", "description": "Cloud storage asset path reference" },
+        "location": {
+          "type": "object",
+          "properties": {
+            "latitude": { "type": "number" },
+            "longitude": { "type": "number" },
+            "accuracy": { "type": "number" },
+            "address": { "type": "string" }
+          }
+        },
+        "visibility": { "type": "string", "enum": ["private", "authenticated", "shared", "public"] },
+        "allowedEmails": { "type": "array", "items": { "type": "string" } },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "metadata": { "type": "object" },
+        "observationIds": { "type": "array", "items": { "type": "string" } },
+        "observations": { "type": "array", "items": { "type": "object" } },
+        "schemaVersion": { "type": "string", "description": "Schema version, defaults to 1.0.0" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "type", "title", "visibility", "createdAt", "schemaVersion"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/users" },
+      "description": "User profile collection"
+    },
+    "/singleObservations/{obsId}": {
+      "schema": { "$ref": "#/entities/singleObservations" },
+      "description": "Collection of individual observation items linked by canonical UUIDv7 ID"
+    },
+    "/observations/{obsSetId}": {
+      "schema": { "$ref": "#/entities/observations" },
+      "description": "Collection of observation sets with canonical UUIDv7 document IDs"
+    }
+  }
+}
