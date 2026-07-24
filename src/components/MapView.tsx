@@ -1,12 +1,12 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { ObservationSet } from '../types';
+import { ObservationSetView } from '../types';
 import { MapPin, User, Calendar } from 'lucide-react';
 
 interface MapViewProps {
-  observations: ObservationSet[];
-  onSelectObservation: (obs: ObservationSet) => void;
+  observations: ObservationSetView[];
+  onSelectObservation: (obs: ObservationSetView) => void;
 }
 
 // Fix Leaflet marker default icon issue in bundled environments

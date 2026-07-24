@@ -1,23 +1,55 @@
 import {
   collection,
-  getDocs,
-  getDoc,
   doc,
-  writeBatch,
-  query,
-  where,
-  orderBy,
+  getDoc,
+  getDocs,
   limit,
+  orderBy,
+  query,
+  runTransaction,
   Timestamp,
+  type DocumentData,
+  type QueryConstraint,
+  where,
+  writeBatch,
 } from 'firebase/firestore';
-import { signInWithPopup, signInAnonymously, signOut, User } from 'firebase/auth';
-import { db, auth, googleProvider } from '../firebase';
-import { ObservationSet, VisibilityType, ObserverUser, CURRENT_SCHEMA_VERSION } from '../types';
-import { ObservationSetModel } from '../models/ObservationSetModel';
+import { signInAnonymously, signInWithPopup, signOut, type User } from 'firebase/auth';
+import { auth, db, googleProvider } from '../firebase';
+import {
+  CURRENT_SCHEMA_VERSION,
+  FIRESTORE_COLLECTIONS,
+  type NormalizedObservationCache,
+  type Observation,
+  type ObservationDraft,
+  type ObservationSet,
+  type ObservationSetDraft,
+  type ObservationSetMembership,
+  type ObservationSetView,
+  type ObserverUser,
+  type VisibilityType,
+} from '../types';
+import {
+  assertMembership,
+  assertObservation,
+  assertObservationSet,
+  buildObservationSetViews,
+  createMembership,
+  membershipDocumentId,
+} from '../domain/observationDomain';
 import { processImageToWebP } from '../utils/imageUtils';
+import { generateId } from '../utils/idUtils';
 
-const COLLECTION_NAME = 'observations';
-const LOCAL_STORAGE_KEY = 'observation_hub_local_cache';
+const LOCAL_STORAGE_KEY = 'observer-2.normalized-cache.v2';
+const MAX_NEW_MEMBERSHIPS_PER_CLIENT_BATCH = 9;
+
+type FilterMode = 'mine' | 'shared' | 'authenticated' | 'public';
+
+const emptyCache = (): NormalizedObservationCache => ({
+  schemaVersion: CURRENT_SCHEMA_VERSION,
+  observations: {},
+  observationSets: {},
+  memberships: {},
+});
 
 // User Auth Helpers
 export async function loginWithGoogle(): Promise<ObserverUser> {
@@ -44,278 +76,464 @@ export function formatUser(user: User): ObserverUser {
   };
 }
 
-// Local Storage Cache Helpers (for instant UI feel & offline fallback)
-function getLocalObservations(): ObservationSet[] {
+function isoTimestamp(value: unknown, field: string, nullable = false): string | null {
+  if (nullable && (value === null || value === undefined)) return null;
+  if (typeof value === 'string' && !Number.isNaN(Date.parse(value))) return value;
+  if (value && typeof (value as { toDate?: unknown }).toDate === 'function') {
+    return ((value as { toDate: () => Date }).toDate()).toISOString();
+  }
+  throw new Error(`${field} must be a Firestore timestamp or an ISO date-time string`);
+}
+
+function toFirestoreTimestamp(iso: string): Timestamp {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) throw new Error(`Invalid ISO date-time: ${iso}`);
+  return Timestamp.fromDate(date);
+}
+
+function normalizeOptionalFields<T extends Observation | ObservationSet>(entity: T): Record<string, unknown> {
+  return {
+    ...entity,
+    observerName: entity.observerName ?? null,
+    observerPhoto: entity.observerPhoto ?? null,
+    imageUrl: entity.imageUrl ?? null,
+    imagePath: entity.imagePath ?? null,
+    location: entity.location ?? null,
+    metadata: entity.metadata ?? {},
+    createdAt: toFirestoreTimestamp(entity.createdAt),
+    updatedAt: toFirestoreTimestamp(entity.updatedAt),
+    deletedAt: entity.deletedAt === null ? null : toFirestoreTimestamp(entity.deletedAt),
+  };
+}
+
+function membershipToFirestore(membership: ObservationSetMembership): Record<string, unknown> {
+  return {
+    ...membership,
+    createdAt: toFirestoreTimestamp(membership.createdAt),
+  };
+}
+
+function observationFromFirestore(id: string, data: DocumentData): Observation {
+  const observation: Observation = {
+    ...(data as Omit<Observation, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>),
+    id,
+    createdAt: isoTimestamp(data.createdAt, 'Observation.createdAt')!,
+    updatedAt: isoTimestamp(data.updatedAt, 'Observation.updatedAt')!,
+    deletedAt: isoTimestamp(data.deletedAt, 'Observation.deletedAt', true),
+  };
+  assertObservation(observation);
+  return observation;
+}
+
+function observationSetFromFirestore(id: string, data: DocumentData): ObservationSet {
+  const observationSet: ObservationSet = {
+    ...(data as Omit<ObservationSet, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>),
+    id,
+    createdAt: isoTimestamp(data.createdAt, 'ObservationSet.createdAt')!,
+    updatedAt: isoTimestamp(data.updatedAt, 'ObservationSet.updatedAt')!,
+    deletedAt: isoTimestamp(data.deletedAt, 'ObservationSet.deletedAt', true),
+  };
+  assertObservationSet(observationSet);
+  return observationSet;
+}
+
+function membershipFromFirestore(id: string, data: DocumentData): ObservationSetMembership {
+  const membership: ObservationSetMembership = {
+    ...(data as Omit<ObservationSetMembership, 'id' | 'createdAt'>),
+    id,
+    createdAt: isoTimestamp(data.createdAt, 'ObservationSetMembership.createdAt')!,
+  };
+  assertMembership(membership);
+  return membership;
+}
+
+function getLocalCache(): NormalizedObservationCache {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (!raw) return [];
-    const list: Record<string, any>[] = JSON.parse(raw);
-    return list.map((item) => ObservationSetModel.fromFirestore(item.id, item).toJSON());
+    if (!raw) return emptyCache();
+    const parsed = JSON.parse(raw) as NormalizedObservationCache;
+    if (parsed.schemaVersion !== CURRENT_SCHEMA_VERSION) return emptyCache();
+    for (const observation of Object.values(parsed.observations)) assertObservation(observation);
+    for (const observationSet of Object.values(parsed.observationSets)) assertObservationSet(observationSet);
+    for (const membership of Object.values(parsed.memberships)) assertMembership(membership);
+    return parsed;
   } catch {
-    return [];
+    return emptyCache();
   }
 }
 
-function saveLocalObservations(items: ObservationSet[]) {
+function saveLocalCache(cache: NormalizedObservationCache): void {
   try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(items));
-  } catch (e) {
-    console.warn('LocalStorage save failed:', e);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cache));
+  } catch (error) {
+    console.warn('LocalStorage save failed:', error);
   }
 }
 
-// Save ObservationSet using ObservationSetModel and converting image to WebP (1024x768)
-export async function createObservation(obsData: Omit<ObservationSet, 'id'> & { id?: string }): Promise<ObservationSet> {
-  // Client-side image WebP 1024x768 processing
-  let processedImageUrl = obsData.imageUrl;
-  if (obsData.imageUrl) {
+function mergeCache(
+  current: NormalizedObservationCache,
+  input: {
+    observations?: Iterable<Observation>;
+    observationSets?: Iterable<ObservationSet>;
+    memberships?: Iterable<ObservationSetMembership>;
+  },
+): NormalizedObservationCache {
+  const next: NormalizedObservationCache = {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    observations: { ...current.observations },
+    observationSets: { ...current.observationSets },
+    memberships: { ...current.memberships },
+  };
+  for (const observation of input.observations ?? []) next.observations[observation.id] = observation;
+  for (const observationSet of input.observationSets ?? []) {
+    // A caller may hand us a read-time ObservationSetView. Strip its derived
+    // arrays before caching so the cache remains three-entity normalized.
+    const { observations: _observations, memberships: _memberships, ...canonical } = observationSet as ObservationSet & Partial<ObservationSetView>;
+    next.observationSets[canonical.id] = canonical as ObservationSet;
+  }
+  for (const membership of input.memberships ?? []) next.memberships[membership.id] = membership;
+  return next;
+}
+
+function makeObservation(draft: ObservationDraft, fallback: Pick<ObservationSet, 'uid' | 'observerName' | 'observerPhoto' | 'visibility' | 'allowedEmails'>, now: string): Observation {
+  const observation: Observation = {
+    ...draft,
+    id: draft.id ?? generateId(),
+    uid: draft.uid ?? fallback.uid,
+    observerName: draft.observerName ?? fallback.observerName,
+    observerPhoto: draft.observerPhoto ?? fallback.observerPhoto,
+    visibility: draft.visibility ?? fallback.visibility,
+    allowedEmails: draft.visibility === 'shared' ? draft.allowedEmails : (draft.visibility ? [] : fallback.allowedEmails),
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    createdAt: draft.createdAt ?? now,
+    updatedAt: now,
+    deletedAt: null,
+  };
+  assertObservation(observation);
+  return observation;
+}
+
+function makeObservationSet(draft: ObservationSetDraft, imageUrl: string | undefined, now: string): ObservationSet {
+  const { observations: _observations, ...setFields } = draft;
+  const observationSet: ObservationSet = {
+    ...setFields,
+    id: setFields.id ?? generateId(),
+    imageUrl,
+    metadata: draft.metadata ?? {},
+    allowedEmails: draft.visibility === 'shared' ? draft.allowedEmails : [],
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    createdAt: draft.createdAt ?? now,
+    updatedAt: now,
+    deletedAt: null,
+  };
+  assertObservationSet(observationSet);
+  return observationSet;
+}
+
+function cacheViews(cache: NormalizedObservationCache): ObservationSetView[] {
+  return buildObservationSetViews({
+    observations: Object.values(cache.observations),
+    observationSets: Object.values(cache.observationSets),
+    memberships: Object.values(cache.memberships),
+  });
+}
+
+function filterLocalViews(views: ObservationSetView[], filterMode: FilterMode, currentUserUid?: string, currentUserEmail?: string): ObservationSetView[] {
+  return views.filter((view) => {
+    if (filterMode === 'mine') return Boolean(currentUserUid && view.uid === currentUserUid);
+    if (filterMode === 'authenticated') return view.visibility === 'authenticated';
+    if (filterMode === 'shared') {
+      return Boolean(currentUserEmail && view.visibility === 'shared' && view.allowedEmails.includes(currentUserEmail));
+    }
+    return view.visibility === 'public';
+  });
+}
+
+async function fetchMembershipsForSets(observationSets: ObservationSet[]): Promise<ObservationSetMembership[]> {
+  const memberships: ObservationSetMembership[] = [];
+  for (const observationSet of observationSets) {
     try {
-      processedImageUrl = await processImageToWebP(obsData.imageUrl, 1024, 768, 0.85);
-    } catch (err) {
-      console.warn('WebP image conversion fallback:', err);
+      const snapshot = await getDocs(query(
+        collection(db, FIRESTORE_COLLECTIONS.memberships),
+        where('observationSetId', '==', observationSet.id),
+        where('uid', '==', observationSet.uid),
+        orderBy('position', 'asc'),
+        orderBy('id', 'asc'),
+      ));
+      memberships.push(...snapshot.docs.map((snapshotDoc) => membershipFromFirestore(snapshotDoc.id, snapshotDoc.data())));
+    } catch (error) {
+      // A set may be visible while an individual observation remains private.
+      // Membership IDs are readable with the set; inaccessible observations are
+      // excluded below when their own document read is denied.
+      console.warn(`Membership query failed for set ${observationSet.id}:`, error);
     }
   }
-
-  const model = new ObservationSetModel({
-    ...obsData,
-    imageUrl: processedImageUrl,
-  });
-
-  try {
-    if (auth.currentUser) {
-      const batch = writeBatch(db);
-
-      // 1. Save main observation set with canonical model.id
-      const setRef = doc(db, COLLECTION_NAME, model.id);
-      batch.set(setRef, {
-        ...model.toFirestoreData(),
-        createdAt: Timestamp.now(),
-      });
-
-      // 2. Save individual sub-observations to /singleObservations collection if present
-      if (model.observations && model.observations.length > 0) {
-        for (const singleObs of model.observations) {
-          const singleRef = doc(db, 'singleObservations', singleObs.id);
-          batch.set(singleRef, {
-            ...singleObs,
-            parentSetId: model.id,
-            uid: model.uid,
-            visibility: model.visibility,
-            allowedEmails: model.visibility === 'shared' ? (model.allowedEmails || []) : [],
-            schemaVersion: CURRENT_SCHEMA_VERSION,
-            createdAt: Timestamp.now(),
-          });
-        }
-      }
-
-      await batch.commit();
-    }
-  } catch (e) {
-    console.warn('Firestore write warning, fallback to local storage:', e);
-  }
-
-  const newObs = model.toJSON();
-
-  // Update local cache
-  const local = getLocalObservations();
-  local.unshift(newObs);
-  saveLocalObservations(local);
-
-  return newObs;
+  return memberships;
 }
 
-// Fetch Observations
+async function fetchReadableObservations(memberships: ObservationSetMembership[]): Promise<Observation[]> {
+  const uniqueIds = [...new Set(memberships.map((membership) => membership.observationId))];
+  const entries = await Promise.all(uniqueIds.map(async (id) => {
+    try {
+      const snapshot = await getDoc(doc(db, FIRESTORE_COLLECTIONS.observations, id));
+      return snapshot.exists() ? observationFromFirestore(snapshot.id, snapshot.data()) : null;
+    } catch (error) {
+      // Independent ACL means a readable set does not make its observations readable.
+      console.warn(`Observation ${id} is not available in this view:`, error);
+      return null;
+    }
+  }));
+  return entries.filter((entry): entry is Observation => entry !== null);
+}
+
+async function fetchFirestoreViews(filterMode: FilterMode, currentUserUid?: string, currentUserEmail?: string): Promise<ObservationSetView[]> {
+  const constraints: QueryConstraint[] = [where('deletedAt', '==', null)];
+  if (filterMode === 'mine') {
+    if (!currentUserUid) return [];
+    constraints.unshift(where('uid', '==', currentUserUid));
+  } else if (filterMode === 'authenticated') {
+    constraints.unshift(where('visibility', '==', 'authenticated'));
+  } else if (filterMode === 'shared') {
+    if (!currentUserEmail) return [];
+    constraints.unshift(where('visibility', '==', 'shared'), where('allowedEmails', 'array-contains', currentUserEmail));
+  } else {
+    constraints.unshift(where('visibility', '==', 'public'));
+  }
+  constraints.push(orderBy('createdAt', 'desc'), limit(50));
+
+  const setSnapshot = await getDocs(query(collection(db, FIRESTORE_COLLECTIONS.observationSets), ...constraints));
+  const observationSets = setSnapshot.docs.map((snapshotDoc) => observationSetFromFirestore(snapshotDoc.id, snapshotDoc.data()));
+  const memberships = await fetchMembershipsForSets(observationSets);
+  const observations = await fetchReadableObservations(memberships);
+  return buildObservationSetViews({ observationSets, observations, memberships });
+}
+
+/**
+ * Creates a canonical set, its independent observations, and their explicit
+ * memberships in one batch. The small batch limit preserves Firestore Rules
+ * `getAfter()` access-call limits while rules validate every relation.
+ */
+export async function createObservation(draft: ObservationSetDraft): Promise<ObservationSetView> {
+  if (draft.observations.length > MAX_NEW_MEMBERSHIPS_PER_CLIENT_BATCH) {
+    throw new Error(`A client batch may create at most ${MAX_NEW_MEMBERSHIPS_PER_CLIENT_BATCH} memberships.`);
+  }
+
+  let processedImageUrl = draft.imageUrl;
+  if (draft.imageUrl) {
+    try {
+      processedImageUrl = await processImageToWebP(draft.imageUrl, 1024, 768, 0.85);
+    } catch (error) {
+      console.warn('WebP image conversion fallback:', error);
+    }
+  }
+
+  const now = new Date().toISOString();
+  const observationSet = makeObservationSet(draft, processedImageUrl, now);
+  const observations = draft.observations.map((observation) => makeObservation(observation, observationSet, now));
+  const memberships = observations.map((observation, position) => createMembership({
+    observationSet,
+    observation,
+    position,
+    createdAt: now,
+  }));
+
+  if (auth.currentUser) {
+    if (auth.currentUser.uid !== observationSet.uid) throw new Error('Authenticated owner does not match observation set owner.');
+    const batch = writeBatch(db);
+    batch.set(doc(db, FIRESTORE_COLLECTIONS.observationSets, observationSet.id), normalizeOptionalFields(observationSet));
+    for (const observation of observations) {
+      batch.set(doc(db, FIRESTORE_COLLECTIONS.observations, observation.id), normalizeOptionalFields(observation));
+    }
+    for (const membership of memberships) {
+      batch.set(doc(db, FIRESTORE_COLLECTIONS.memberships, membership.id), membershipToFirestore(membership));
+    }
+    await batch.commit();
+  }
+
+  const updatedCache = mergeCache(getLocalCache(), { observationSets: [observationSet], observations, memberships });
+  saveLocalCache(updatedCache);
+  return buildObservationSetViews({ observationSets: [observationSet], observations, memberships })[0];
+}
+
+/** Fetches a read-time projection; Firestore and local cache both remain normalized. */
 export async function fetchObservations(
-  filterMode: 'mine' | 'shared' | 'authenticated' | 'public',
+  filterMode: FilterMode,
   currentUserUid?: string,
-  currentUserEmail?: string
-): Promise<ObservationSet[]> {
-  const localList = getLocalObservations();
-
+  currentUserEmail?: string,
+): Promise<ObservationSetView[]> {
   try {
-    const colRef = collection(db, COLLECTION_NAME);
-    let q;
-
-    if (filterMode === 'mine' && currentUserUid) {
-      q = query(
-        colRef,
-        where('uid', '==', currentUserUid),
-        orderBy('createdAt', 'desc'),
-        limit(50)
-      );
-    } else if (filterMode === 'authenticated') {
-      q = query(
-        colRef,
-        where('visibility', '==', 'authenticated'),
-        orderBy('createdAt', 'desc'),
-        limit(50)
-      );
-    } else if (filterMode === 'shared') {
-      if (currentUserEmail) {
-        q = query(
-          colRef,
-          where('visibility', '==', 'shared'),
-          where('allowedEmails', 'array-contains', currentUserEmail),
-          orderBy('createdAt', 'desc'),
-          limit(50)
-        );
-      } else {
-        q = query(
-          colRef,
-          where('visibility', '==', 'shared'),
-          orderBy('createdAt', 'desc'),
-          limit(50)
-        );
-      }
-    } else if (filterMode === 'public') {
-      q = query(
-        colRef,
-        where('visibility', '==', 'public'),
-        orderBy('createdAt', 'desc'),
-        limit(50)
-      );
-    }
-
-    if (q) {
-      const snapshot = await getDocs(q);
-      const firestoreItems: ObservationSet[] = snapshot.docs.map((d) => {
-        const model = ObservationSetModel.fromFirestore(d.id, d.data());
-        return model.toJSON();
+    const views = await fetchFirestoreViews(filterMode, currentUserUid, currentUserEmail);
+    if (views.length > 0) {
+      const cache = mergeCache(getLocalCache(), {
+        observationSets: views,
+        observations: views.flatMap((view) => view.observations),
+        memberships: views.flatMap((view) => view.memberships),
       });
-
-      if (firestoreItems.length > 0) {
-        return firestoreItems;
-      }
+      saveLocalCache(cache);
+      return views;
     }
-  } catch (e) {
-    console.warn('Firestore query error, using local fallback:', e);
+  } catch (error) {
+    console.warn('Firestore query error, using v2 local cache:', error);
   }
-
-  // Fallback filtering from local cache
-  return localList.filter((item) => {
-    if (filterMode === 'mine') {
-      return currentUserUid ? item.uid === currentUserUid : true;
-    } else if (filterMode === 'authenticated') {
-      return item.visibility === 'authenticated';
-    } else if (filterMode === 'shared') {
-      if (item.visibility !== 'shared') return false;
-      if (!currentUserEmail) return true;
-      return Array.isArray(item.allowedEmails) && item.allowedEmails.includes(currentUserEmail);
-    } else {
-      return item.visibility === 'public';
-    }
-  });
+  return filterLocalViews(cacheViews(getLocalCache()), filterMode, currentUserUid, currentUserEmail);
 }
 
-// Update Visibility & Allowed Emails
-export async function updateObservationVisibility(
+/** Attaches an existing observation to an existing set without duplicating either endpoint. */
+export async function attachObservationToSet(observationSetId: string, observationId: string, position: number): Promise<ObservationSetMembership> {
+  if (!auth.currentUser) throw new Error('Authentication required');
+
+  const [setSnapshot, observationSnapshot] = await Promise.all([
+    getDoc(doc(db, FIRESTORE_COLLECTIONS.observationSets, observationSetId)),
+    getDoc(doc(db, FIRESTORE_COLLECTIONS.observations, observationId)),
+  ]);
+  if (!setSnapshot.exists() || !observationSnapshot.exists()) throw new Error('Membership endpoint not found.');
+
+  const observationSet = observationSetFromFirestore(setSnapshot.id, setSnapshot.data());
+  const observation = observationFromFirestore(observationSnapshot.id, observationSnapshot.data());
+  if (observationSet.uid !== auth.currentUser.uid || observation.uid !== auth.currentUser.uid) {
+    throw new Error('Only the shared endpoint owner may create a membership.');
+  }
+  const membership = createMembership({
+    observationSet,
+    observation,
+    position,
+    createdAt: new Date().toISOString(),
+  });
+
+  const membershipRef = doc(db, FIRESTORE_COLLECTIONS.memberships, membership.id);
+  await runTransaction(db, async (transaction) => {
+    const existing = await transaction.get(membershipRef);
+    if (existing.exists()) throw new Error('This observation is already attached to the set.');
+    transaction.set(membershipRef, membershipToFirestore(membership));
+  });
+
+  const cache = mergeCache(getLocalCache(), { observationSets: [observationSet], observations: [observation], memberships: [membership] });
+  saveLocalCache(cache);
+  return membership;
+}
+
+/** Detaching deletes only the relationship document; it never deletes the observation. */
+export async function detachObservationFromSet(observationSetId: string, observationId: string): Promise<void> {
+  if (!auth.currentUser) throw new Error('Authentication required');
+  const id = membershipDocumentId(observationSetId, observationId);
+  const batch = writeBatch(db);
+  batch.delete(doc(db, FIRESTORE_COLLECTIONS.memberships, id));
+  await batch.commit();
+
+  const cache = getLocalCache();
+  delete cache.memberships[id];
+  saveLocalCache(cache);
+}
+
+/**
+ * Updates the canonical observation only. Any set view that contains it is
+ * rebuilt from this one record on the next read; no copied child data exists
+ * to fan out or reconcile.
+ */
+export async function updateObservation(
+  id: string,
+  changes: Partial<Pick<Observation,
+    'observerName' | 'observerPhoto' | 'type' | 'title' | 'summary' | 'rawContent' |
+    'imageUrl' | 'imagePath' | 'location' | 'visibility' | 'allowedEmails' | 'metadata'
+  >>,
+): Promise<void> {
+  if (!auth.currentUser) throw new Error('Authentication required');
+
+  const cache = getLocalCache();
+  let current = cache.observations[id];
+  if (!current) {
+    const snapshot = await getDoc(doc(db, FIRESTORE_COLLECTIONS.observations, id));
+    if (!snapshot.exists()) throw new Error('Observation not found.');
+    current = observationFromFirestore(snapshot.id, snapshot.data());
+  }
+  if (current.uid !== auth.currentUser.uid) throw new Error('Only the observation owner may update it.');
+  if (current.deletedAt !== null) throw new Error('A soft-deleted observation cannot be updated.');
+
+  const now = new Date().toISOString();
+  const definedChanges = Object.fromEntries(
+    Object.entries(changes).filter(([, value]) => value !== undefined),
+  ) as Partial<typeof changes>;
+  const next: Observation = {
+    ...current,
+    ...definedChanges,
+    allowedEmails: (definedChanges.visibility ?? current.visibility) === 'shared'
+      ? [...new Set(definedChanges.allowedEmails ?? current.allowedEmails)]
+      : [],
+    updatedAt: now,
+  };
+  assertObservation(next);
+
+  const updateData = Object.fromEntries(
+    Object.entries({ ...definedChanges, allowedEmails: next.allowedEmails, updatedAt: toFirestoreTimestamp(now) })
+      .filter(([, value]) => value !== undefined),
+  );
+  const batch = writeBatch(db);
+  batch.update(doc(db, FIRESTORE_COLLECTIONS.observations, id), updateData);
+  await batch.commit();
+
+  cache.observations[id] = next;
+  saveLocalCache(cache);
+}
+
+/** Changes only the set ACL. Observation ACLs remain independent by design. */
+export async function updateObservationSetVisibility(
   id: string,
   newVisibility: VisibilityType,
   allowedEmails: string[] = [],
-  observationIds?: string[]
 ): Promise<void> {
-  if (!auth.currentUser) {
-    throw new Error('Authentication required');
-  }
-
-  const sanitizedAllowedEmails = newVisibility === 'shared' ? allowedEmails : [];
-
-  let targetChildIds = observationIds;
-  if (!targetChildIds || !Array.isArray(targetChildIds)) {
-    const parentSnap = await getDoc(doc(db, COLLECTION_NAME, id));
-    if (!parentSnap.exists()) {
-      throw new Error('Parent document not found');
-    }
-    const pData = parentSnap.data();
-    if (!Array.isArray(pData.observationIds)) {
-      throw new Error('observationIds is missing in canonical data or is not an array');
-    }
-    targetChildIds = pData.observationIds;
-  }
-
-  const childIds = targetChildIds;
-  if (childIds.length + 1 > 500) {
-    throw new Error('更新対象の観測件数がバッチ書き込み上限（500件）を超えています。');
-  }
-
+  if (!auth.currentUser) throw new Error('Authentication required');
+  const sanitizedAllowedEmails = newVisibility === 'shared' ? [...new Set(allowedEmails)] : [];
+  const now = new Date().toISOString();
   const batch = writeBatch(db);
-  const parentRef = doc(db, COLLECTION_NAME, id);
-  batch.update(parentRef, {
+  batch.update(doc(db, FIRESTORE_COLLECTIONS.observationSets, id), {
     visibility: newVisibility,
     allowedEmails: sanitizedAllowedEmails,
+    updatedAt: toFirestoreTimestamp(now),
   });
-
-  for (const childId of childIds) {
-    const childRef = doc(db, 'singleObservations', childId);
-    batch.update(childRef, {
-      visibility: newVisibility,
-      allowedEmails: sanitizedAllowedEmails,
-    });
-  }
-
   await batch.commit();
 
-  // Sync local cache
-  const local = getLocalObservations();
-  const updated = local.map((item) => {
-    if (item.id === id) {
-      const updatedChildObs = (item.observations || []).map((o) => ({
-        ...o,
-        visibility: newVisibility,
-        allowedEmails: sanitizedAllowedEmails,
-      }));
-      return {
-        ...item,
-        visibility: newVisibility,
-        allowedEmails: sanitizedAllowedEmails,
-        observations: updatedChildObs,
-      };
-    }
-    return item;
-  });
-  saveLocalObservations(updated);
+  const cache = getLocalCache();
+  const current = cache.observationSets[id];
+  if (current) {
+    cache.observationSets[id] = { ...current, visibility: newVisibility, allowedEmails: sanitizedAllowedEmails, updatedAt: now };
+    saveLocalCache(cache);
+  }
 }
 
-// Delete Observation
-export async function deleteObservation(
-  id: string,
-  observationIds?: string[]
-): Promise<void> {
-  if (!auth.currentUser) {
-    throw new Error('Authentication required');
-  }
-
-  let targetChildIds = observationIds;
-  if (!targetChildIds || !Array.isArray(targetChildIds)) {
-    const parentSnap = await getDoc(doc(db, COLLECTION_NAME, id));
-    if (!parentSnap.exists()) {
-      throw new Error('Parent document not found');
-    }
-    const pData = parentSnap.data();
-    if (!Array.isArray(pData.observationIds)) {
-      throw new Error('observationIds is missing in canonical data or is not an array');
-    }
-    targetChildIds = pData.observationIds;
-  }
-
-  const childIds = targetChildIds;
-  if (childIds.length + 1 > 500) {
-    throw new Error('削除対象の観測件数がバッチ書き込み上限（500件）を超えています。');
-  }
-
+/** Soft-deletes a set only; memberships and observations are intentionally retained. */
+export async function softDeleteObservationSet(id: string): Promise<void> {
+  if (!auth.currentUser) throw new Error('Authentication required');
+  const now = new Date().toISOString();
   const batch = writeBatch(db);
-  const parentRef = doc(db, COLLECTION_NAME, id);
-  batch.delete(parentRef);
-
-  for (const childId of childIds) {
-    const childRef = doc(db, 'singleObservations', childId);
-    batch.delete(childRef);
-  }
-
+  batch.update(doc(db, FIRESTORE_COLLECTIONS.observationSets, id), {
+    deletedAt: toFirestoreTimestamp(now),
+    updatedAt: toFirestoreTimestamp(now),
+  });
   await batch.commit();
 
-  // Sync local cache
-  const local = getLocalObservations();
-  const filtered = local.filter((item) => item.id !== id);
-  saveLocalObservations(filtered);
+  const cache = getLocalCache();
+  const current = cache.observationSets[id];
+  if (current) {
+    cache.observationSets[id] = { ...current, deletedAt: now, updatedAt: now };
+    saveLocalCache(cache);
+  }
+}
+
+/** Soft-deletes an observation only; it does not alter its sets or memberships. */
+export async function softDeleteObservation(id: string): Promise<void> {
+  if (!auth.currentUser) throw new Error('Authentication required');
+  const now = new Date().toISOString();
+  const batch = writeBatch(db);
+  batch.update(doc(db, FIRESTORE_COLLECTIONS.observations, id), {
+    deletedAt: toFirestoreTimestamp(now),
+    updatedAt: toFirestoreTimestamp(now),
+  });
+  await batch.commit();
+
+  const cache = getLocalCache();
+  const current = cache.observations[id];
+  if (current) {
+    cache.observations[id] = { ...current, deletedAt: now, updatedAt: now };
+    saveLocalCache(cache);
+  }
 }

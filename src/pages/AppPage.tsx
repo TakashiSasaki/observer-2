@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebase';
-import { ObservationSet, Observation, VisibilityType, ObservationType, ObserverUser } from '../types';
+import { ObservationSetView, Observation, VisibilityType, ObservationType, ObserverUser } from '../types';
 import {
   fetchObservations,
   createObservation,
-  updateObservationVisibility,
-  deleteObservation,
+  updateObservationSetVisibility,
+  softDeleteObservationSet,
   formatUser,
   loginAnonymously,
 } from '../services/firebaseService';
@@ -34,7 +34,7 @@ import {
 
 export default function AppPage() {
   const [currentUser, setCurrentUser] = useState<ObserverUser | null>(null);
-  const [observations, setObservations] = useState<ObservationSet[]>([]);
+  const [observations, setObservations] = useState<ObservationSetView[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Filters & Views
@@ -46,7 +46,7 @@ export default function AppPage() {
   // Modals
   const [isNewObsModalOpen, setIsNewObsModalOpen] = useState<boolean>(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
-  const [selectedObservation, setSelectedObservation] = useState<ObservationSet | null>(null);
+  const [selectedObservation, setSelectedObservation] = useState<ObservationSetView | null>(null);
 
   // Initial Auth Listener
   useEffect(() => {
@@ -133,11 +133,8 @@ export default function AppPage() {
       visibility: data.visibility,
       allowedEmails: data.visibility === 'shared' ? (data.allowedEmails || []) : [],
       tags: data.tags,
-      metadata: data.metadata,
-      observationIds: data.observations ? data.observations.map((o) => o.id) : [],
+      metadata: data.metadata || {},
       observations: data.observations || [],
-      schemaVersion: '1.0.0',
-      createdAt: new Date().toISOString(),
     });
 
     setObservations((prev) => [newDoc, ...prev]);
@@ -148,31 +145,20 @@ export default function AppPage() {
     const target = observations.find((o) => o.id === id);
     const emailsToSave = newVis === 'shared' ? (allowedEmails || target?.allowedEmails || []) : [];
     try {
-      await updateObservationVisibility(id, newVis, emailsToSave, target?.observationIds);
+      await updateObservationSetVisibility(id, newVis, emailsToSave);
       setObservations((prev) =>
         prev.map((o) => {
           if (o.id === id) {
-            const updatedChildObs = (o.observations || []).map((child) => ({
-              ...child,
-              visibility: newVis,
-              allowedEmails: emailsToSave,
-            }));
-            return { ...o, visibility: newVis, allowedEmails: emailsToSave, observations: updatedChildObs };
+            return { ...o, visibility: newVis, allowedEmails: emailsToSave };
           }
           return o;
         })
       );
       if (selectedObservation && selectedObservation.id === id) {
-        const updatedChildObs = (selectedObservation.observations || []).map((child) => ({
-          ...child,
-          visibility: newVis,
-          allowedEmails: emailsToSave,
-        }));
         setSelectedObservation({
           ...selectedObservation,
           visibility: newVis,
           allowedEmails: emailsToSave,
-          observations: updatedChildObs,
         });
       }
     } catch (err) {
@@ -183,9 +169,8 @@ export default function AppPage() {
 
   // Handle Delete
   const handleDeleteObservation = async (id: string) => {
-    const target = observations.find((o) => o.id === id);
     try {
-      await deleteObservation(id, target?.observationIds);
+      await softDeleteObservationSet(id);
       setObservations((prev) => prev.filter((o) => o.id !== id));
       if (selectedObservation?.id === id) {
         setSelectedObservation(null);

@@ -1,62 +1,202 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Helper functions
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    function isNonAnonymous() {
-      return isAuthenticated() && 
-             request.auth.token.email != null && 
-             (!('sign_in_provider' in request.auth.token.firebase) || request.auth.token.firebase.sign_in_provider != 'anonymous');
+    function isNonAnonymousWithEmail() {
+      return isAuthenticated()
+        && request.auth.token.email != null
+        && (!('sign_in_provider' in request.auth.token.firebase)
+          || request.auth.token.firebase.sign_in_provider != 'anonymous');
     }
 
-    function isDocOwner() {
-      return isAuthenticated() && resource.data.uid == request.auth.uid;
+    function isOwner(data) {
+      return isAuthenticated() && data.uid == request.auth.uid;
     }
 
-    function isEmailAllowed() {
-      return isNonAnonymous() && 
-             resource.data.keys().hasAll(['allowedEmails']) && 
-             request.auth.token.email in resource.data.allowedEmails;
+    function isUuidV7(value) {
+      return value is string
+        && value.matches('^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$');
     }
 
-    // User profiles
+    function canReadEntity(data) {
+      return data.deletedAt == null && (
+        data.visibility == 'public'
+        || (data.visibility == 'authenticated' && isAuthenticated())
+        || (data.visibility == 'shared'
+          && isNonAnonymousWithEmail()
+          && request.auth.token.email in data.allowedEmails)
+        || isOwner(data)
+      );
+    }
+
+    function hasCommonEntityKeys(data) {
+      return data.keys().hasAll([
+        'id', 'uid', 'observerName', 'observerPhoto', 'type', 'title', 'summary', 'rawContent',
+        'imageUrl', 'imagePath', 'location', 'visibility', 'allowedEmails', 'metadata',
+        'schemaVersion', 'createdAt', 'updatedAt', 'deletedAt'
+      ]);
+    }
+
+    function hasOnlyObservationKeys(data) {
+      return data.keys().hasOnly([
+        'id', 'uid', 'observerName', 'observerPhoto', 'type', 'title', 'summary', 'rawContent',
+        'imageUrl', 'imagePath', 'location', 'visibility', 'allowedEmails', 'metadata',
+        'schemaVersion', 'createdAt', 'updatedAt', 'deletedAt'
+      ]);
+    }
+
+    function hasOnlyObservationSetKeys(data) {
+      return data.keys().hasOnly([
+        'id', 'uid', 'observerName', 'observerPhoto', 'type', 'title', 'summary', 'rawContent',
+        'imageUrl', 'imagePath', 'location', 'visibility', 'allowedEmails', 'tags', 'metadata',
+        'schemaVersion', 'createdAt', 'updatedAt', 'deletedAt'
+      ]);
+    }
+
+    function commonEntityFieldsAreValid(data, documentId) {
+      return data.id == documentId
+        && isUuidV7(data.id)
+        && data.uid is string
+        && (data.observerName == null || data.observerName is string)
+        && (data.observerPhoto == null || data.observerPhoto is string)
+        && data.type in ['nfc', 'qr', 'object', 'ocr', 'manual']
+        && data.title is string
+        && data.summary is string
+        && data.rawContent is string
+        && (data.imageUrl == null || data.imageUrl is string)
+        && (data.imagePath == null || data.imagePath is string)
+        && (data.location == null || data.location is map)
+        && data.visibility in ['public', 'authenticated', 'shared', 'private']
+        && data.allowedEmails is list
+        && (data.visibility == 'shared' || data.allowedEmails.size() == 0)
+        && data.metadata is map
+        && data.schemaVersion == '2.0.0'
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (data.deletedAt == null || data.deletedAt is timestamp);
+    }
+
+    function validNewObservation(data, observationId) {
+      return hasCommonEntityKeys(data)
+        && hasOnlyObservationKeys(data)
+        && commonEntityFieldsAreValid(data, observationId)
+        && data.deletedAt == null;
+    }
+
+    function validUpdatedObservation(data, observationId) {
+      return hasCommonEntityKeys(data)
+        && hasOnlyObservationKeys(data)
+        && commonEntityFieldsAreValid(data, observationId)
+        && resource.data.deletedAt == null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'observerName', 'observerPhoto', 'type', 'title', 'summary', 'rawContent',
+          'imageUrl', 'imagePath', 'location', 'visibility', 'allowedEmails', 'metadata',
+          'updatedAt', 'deletedAt'
+        ]);
+    }
+
+    function validNewObservationSet(data, observationSetId) {
+      return hasCommonEntityKeys(data)
+        && data.keys().hasAll(['tags'])
+        && hasOnlyObservationSetKeys(data)
+        && commonEntityFieldsAreValid(data, observationSetId)
+        && data.tags is list
+        && data.deletedAt == null;
+    }
+
+    function validUpdatedObservationSet(data, observationSetId) {
+      return hasCommonEntityKeys(data)
+        && data.keys().hasAll(['tags'])
+        && hasOnlyObservationSetKeys(data)
+        && commonEntityFieldsAreValid(data, observationSetId)
+        && data.tags is list
+        && resource.data.deletedAt == null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'observerName', 'observerPhoto', 'type', 'title', 'summary', 'rawContent',
+          'imageUrl', 'imagePath', 'location', 'visibility', 'allowedEmails', 'tags', 'metadata',
+          'updatedAt', 'deletedAt'
+        ]);
+    }
+
+    function validMembership(data, membershipId) {
+      return data.keys().hasAll([
+          'id', 'observationSetId', 'observationId', 'uid', 'position', 'schemaVersion', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'observationSetId', 'observationId', 'uid', 'position', 'schemaVersion', 'createdAt'
+        ])
+        && data.id == membershipId
+        && isUuidV7(data.observationSetId)
+        && isUuidV7(data.observationId)
+        && membershipId == data.observationSetId + '__' + data.observationId
+        && data.uid is string
+        && data.position is int
+        && data.position >= 0
+        && data.schemaVersion == '2.0.0'
+        && data.createdAt is timestamp;
+    }
+
+    function hasActiveOwnedMembershipEndpoints(data) {
+      let observationSet = getAfter(/databases/$(database)/documents/observationSets/$(data.observationSetId)).data;
+      let observation = getAfter(/databases/$(database)/documents/observations/$(data.observationId)).data;
+      return observationSet.uid == request.auth.uid
+        && observation.uid == request.auth.uid
+        && observationSet.schemaVersion == '2.0.0'
+        && observation.schemaVersion == '2.0.0'
+        && observationSet.deletedAt == null
+        && observation.deletedAt == null;
+    }
+
+    function canReadMembership(data) {
+      // A membership exposes only the relation. Reading it never grants read
+      // access to `/observations/{id}`, whose ACL is checked independently.
+      return canReadEntity(
+        get(/databases/$(database)/documents/observationSets/$(data.observationSetId)).data
+      );
+    }
+
     match /users/{uid} {
       allow read: if isAuthenticated();
       allow create, update, delete: if isAuthenticated() && request.auth.uid == uid;
     }
 
-    // Single Observations Collection (個別の独立観測データ: 複数の観測セットから参照可能)
-    match /singleObservations/{obsId} {
-      allow read: if resource.data.visibility == 'public' ||
-                     (resource.data.visibility == 'authenticated' && isAuthenticated()) ||
-                     (resource.data.visibility == 'shared' && isEmailAllowed()) ||
-                     isDocOwner();
-
-      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
-
-      allow update: if isDocOwner() && request.resource.data.uid == resource.data.uid;
-      allow delete: if isDocOwner();
+    match /observations/{observationId} {
+      allow read: if canReadEntity(resource.data);
+      allow create: if isAuthenticated()
+        && request.resource.data.uid == request.auth.uid
+        && validNewObservation(request.resource.data, observationId);
+      allow update: if isOwner(resource.data)
+        && request.resource.data.uid == resource.data.uid
+        && validUpdatedObservation(request.resource.data, observationId);
+      // Entity deletion is deliberately logical. Membership deletion is the
+      // only physical relation delete permitted in this model.
+      allow delete: if false;
     }
 
-    // Observation Sets Collection (観測セットデータ: observationIds 配列で複数観測を参照可能)
-    match /observations/{obsSetId} {
-      allow read: if resource.data.visibility == 'public' ||
-                     (resource.data.visibility == 'authenticated' && isAuthenticated()) ||
-                     (resource.data.visibility == 'shared' && isEmailAllowed()) ||
-                     isDocOwner();
+    match /observationSets/{observationSetId} {
+      allow read: if canReadEntity(resource.data);
+      allow create: if isAuthenticated()
+        && request.resource.data.uid == request.auth.uid
+        && validNewObservationSet(request.resource.data, observationSetId);
+      allow update: if isOwner(resource.data)
+        && request.resource.data.uid == resource.data.uid
+        && validUpdatedObservationSet(request.resource.data, observationSetId);
+      allow delete: if false;
+    }
 
-      // CREATE: Authenticated user creating document with their own UID
-      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
-
-      // UPDATE: Document owner only, cannot change owner
-      allow update: if isDocOwner() && request.resource.data.uid == resource.data.uid;
-
-      // DELETE: Document owner only
-      allow delete: if isDocOwner();
+    match /observationSetMemberships/{membershipId} {
+      allow read: if canReadMembership(resource.data);
+      allow create: if isAuthenticated()
+        && request.resource.data.uid == request.auth.uid
+        && validMembership(request.resource.data, membershipId)
+        && hasActiveOwnedMembershipEndpoints(request.resource.data);
+      allow update: if isOwner(resource.data)
+        && validMembership(request.resource.data, membershipId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['position']);
+      allow delete: if isOwner(resource.data);
     }
   }
 }

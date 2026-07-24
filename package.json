@@ -9,6 +9,9 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
+    "test": "npm run test:domain && npm run test:schema && npm run test:m2m:harness",
+    "test:domain": "node --experimental-strip-types --test tests/domain/observationDomain.test.ts",
+    "test:schema": "node --test tests/schema/schema.test.mjs",
     "verify:m2m:harness": "node scripts/verify-m2m-harness.mjs",
     "test:m2m:harness": "node --test tests/m2m/harness.test.mjs"
   },

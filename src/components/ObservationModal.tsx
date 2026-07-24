@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ObservationType, VisibilityType, LocationData, ObserverUser, Observation, ObservationSet } from '../types';
+import { CURRENT_SCHEMA_VERSION, ObservationType, VisibilityType, LocationData, ObserverUser, Observation } from '../types';
 import { generateId } from '../utils/idUtils';
 import { QRScanner } from './scanners/QRScanner';
 import { NFCScanner } from './scanners/NFCScanner';
@@ -98,9 +98,9 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({
   }) => {
     const parsedEmails = parseAllowedEmails(allowedEmailsText);
 
+    const now = new Date().toISOString();
     const newObsItem: Observation = {
       id: generateId(),
-      parentSetId: '', // Dummy value, overwritten by ObservationSetModel
       uid: currentUser.uid,
       observerName: currentUser.displayName,
       observerPhoto: currentUser.photoURL,
@@ -111,10 +111,12 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({
       imageUrl: data.imageUrl,
       imagePath: data.imagePath,
       visibility,
-      allowedEmails: parsedEmails,
+      allowedEmails: visibility === 'shared' ? parsedEmails : [],
       metadata: data.metadata || {},
-      schemaVersion: '1.0.0',
-      createdAt: new Date().toISOString(),
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
     };
 
     // If there are already items in the batch, auto append
@@ -138,7 +140,7 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({
         allowedEmails: parsedEmails,
         tags: data.tags,
         metadata: data.metadata,
-        observations: [],
+        observations: [newObsItem],
       });
       onClose();
     } catch (err) {

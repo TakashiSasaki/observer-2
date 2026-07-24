@@ -1,98 +1,63 @@
 {
-  "entities": {
+  "schemaVersion": "2.0.0",
+  "relationshipModel": "explicit-many-to-many-membership",
+  "entityDeletion": "soft-delete",
+  "collections": {
     "users": {
-      "title": "User Profiles",
-      "description": "Profile information of observers",
-      "type": "object",
-      "properties": {
-        "uid": { "type": "string" },
-        "displayName": { "type": "string" },
-        "photoURL": { "type": "string" },
-        "email": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
+      "description": "Observer profile documents.",
       "required": ["uid", "displayName"]
     },
-    "singleObservations": {
-      "title": "Single Observation",
-      "description": "Individual observation entry belonging to an ObservationSet or standalone",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "parentSetId": { "type": "string" },
-        "uid": { "type": "string" },
-        "observerName": { "type": "string" },
-        "observerPhoto": { "type": "string" },
-        "type": { "type": "string", "enum": ["nfc", "qr", "object", "ocr", "manual"] },
-        "title": { "type": "string" },
-        "summary": { "type": "string" },
-        "rawContent": { "type": "string" },
-        "imageUrl": { "type": "string" },
-        "imagePath": { "type": "string", "description": "Cloud Storage path reference" },
-        "location": {
-          "type": "object",
-          "properties": {
-            "latitude": { "type": "number" },
-            "longitude": { "type": "number" },
-            "accuracy": { "type": "number" },
-            "address": { "type": "string" }
-          }
-        },
-        "visibility": { "type": "string", "enum": ["private", "authenticated", "shared", "public"] },
-        "allowedEmails": { "type": "array", "items": { "type": "string" } },
-        "metadata": { "type": "object" },
-        "schemaVersion": { "type": "string", "description": "Schema version, defaults to 1.0.0" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["id", "parentSetId", "uid", "type", "title", "summary", "rawContent", "visibility", "createdAt", "schemaVersion"]
-    },
     "observations": {
-      "title": "Observation Set",
-      "description": "Multi-modal observation entries/clusters captured by observers",
-      "type": "object",
-      "properties": {
-        "uid": { "type": "string" },
-        "observerName": { "type": "string" },
-        "observerPhoto": { "type": "string" },
-        "type": { "type": "string", "enum": ["nfc", "qr", "object", "ocr", "manual"] },
-        "title": { "type": "string" },
-        "summary": { "type": "string" },
-        "rawContent": { "type": "string" },
-        "imageUrl": { "type": "string" },
-        "imagePath": { "type": "string", "description": "Cloud storage asset path reference" },
-        "location": {
-          "type": "object",
-          "properties": {
-            "latitude": { "type": "number" },
-            "longitude": { "type": "number" },
-            "accuracy": { "type": "number" },
-            "address": { "type": "string" }
-          }
-        },
-        "visibility": { "type": "string", "enum": ["private", "authenticated", "shared", "public"] },
-        "allowedEmails": { "type": "array", "items": { "type": "string" } },
-        "tags": { "type": "array", "items": { "type": "string" } },
-        "metadata": { "type": "object" },
-        "observationIds": { "type": "array", "items": { "type": "string" } },
-        "observations": { "type": "array", "items": { "type": "object" } },
-        "schemaVersion": { "type": "string", "description": "Schema version, defaults to 1.0.0" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["uid", "type", "title", "summary", "rawContent", "visibility", "tags", "observationIds", "observations", "createdAt", "schemaVersion"]
+      "description": "Canonical individual observation documents. They do not contain parentSetId or embedded set data.",
+      "documentId": "Observation.id (UUIDv7)",
+      "required": [
+        "id", "uid", "type", "title", "summary", "rawContent", "visibility", "allowedEmails",
+        "metadata", "schemaVersion", "createdAt", "updatedAt", "deletedAt"
+      ],
+      "forbidden": ["parentSetId", "observationIds", "observations"]
+    },
+    "observationSets": {
+      "description": "Canonical grouping documents. They do not contain member IDs or embedded observations.",
+      "documentId": "ObservationSet.id (UUIDv7)",
+      "required": [
+        "id", "uid", "type", "title", "summary", "rawContent", "visibility", "allowedEmails", "tags",
+        "metadata", "schemaVersion", "createdAt", "updatedAt", "deletedAt"
+      ],
+      "forbidden": ["parentSetId", "observationIds", "observations"]
+    },
+    "observationSetMemberships": {
+      "description": "The only relation between observations and sets. A document is physically removed when detaching an observation.",
+      "documentId": "${observationSetId}__${observationId}",
+      "required": [
+        "id", "observationSetId", "observationId", "uid", "position", "schemaVersion", "createdAt"
+      ],
+      "invariants": [
+        "id equals ${observationSetId}__${observationId}",
+        "at most one document exists for each (observationSetId, observationId) tuple",
+        "uid equals the uid of both endpoint documents",
+        "position belongs to the membership rather than either endpoint",
+        "schemaVersion is 2.0.0"
+      ]
     }
   },
-  "firestore": {
-    "/users/{uid}": {
-      "schema": { "$ref": "#/entities/users" },
-      "description": "User profile collection"
-    },
-    "/singleObservations/{obsId}": {
-      "schema": { "$ref": "#/entities/singleObservations" },
-      "description": "Collection of individual observation items linked by canonical UUIDv7 ID"
-    },
-    "/observations/{obsSetId}": {
-      "schema": { "$ref": "#/entities/observations" },
-      "description": "Collection of observation sets with canonical UUIDv7 document IDs"
-    }
-  }
+  "accessControl": {
+    "observationAndSetAcl": "independent",
+    "membershipRead": "a readable set may expose membership identifiers, but each observation document applies its own ACL before content is read",
+    "crossOwnerMembership": "disallowed-in-2.0.0"
+  },
+  "clientWrites": {
+    "observationAndSetDelete": "logical-only; set deletion does not cascade to observations or memberships",
+    "membershipDelete": "physical-only; detaching does not delete either endpoint",
+    "immutableFields": ["id", "uid", "schemaVersion", "createdAt"]
+  },
+  "indexes": {
+    "file": "firestore.indexes.json",
+    "requiredFor": [
+      "owner, visibility, and shared-email observation-set feeds",
+      "observation-set membership projection ordered by position and deterministic document ID",
+      "reverse membership lookup by observation"
+    ]
+  },
+  "v1FirestoreDataPolicy": "pending-user-decision",
+  "v1WritePolicy": "forbidden-after-v2-cutover"
 }
