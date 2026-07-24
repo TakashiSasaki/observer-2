@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ObservationSet, VisibilityType } from '../types';
+import { ObservationSetView, VisibilityType } from '../types';
 import {
   X,
   MapPin,
@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 interface ObservationDetailModalProps {
-  observation: ObservationSet | null;
+  observation: ObservationSetView | null;
   currentUserId?: string;
   onClose: () => void;
   onVisibilityChange: (id: string, newVis: VisibilityType, allowedEmails?: string[]) => void;

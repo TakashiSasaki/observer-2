@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ObservationSet, VisibilityType } from '../types';
+import { ObservationSetView, VisibilityType } from '../types';
 import {
   QrCode,
   Wifi,
@@ -21,9 +21,9 @@ import {
 } from 'lucide-react';
 
 interface ObservationCardProps {
-  observation: ObservationSet;
+  observation: ObservationSetView;
   currentUserId?: string;
-  onSelect: (obs: ObservationSet) => void;
+  onSelect: (obs: ObservationSetView) => void;
   onVisibilityChange: (id: string, newVis: VisibilityType, allowedEmails?: string[]) => void;
   onDelete: (id: string) => void;
 }

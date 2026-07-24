@@ -1,280 +1,194 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.com/observation-interchange.schema.json",
-  "title": "Observation Interchange Format",
-  "description": "Standard JSON Schema for exchanging ObservationSet and its Observations.",
+  "$id": "https://moukaeritai.work/schemas/observation-interchange-2.0.0.schema.json",
+  "title": "Observation Interchange Format 2.0.0",
+  "description": "A normalized exchange bundle. Observations, observation sets, and memberships are separate canonical arrays. Cross-record tuple, ownership, and reference checks are semantic validation requirements in addition to this structural schema.",
   "type": "object",
-  "required": [
-    "id",
-    "uid",
-    "type",
-    "title",
-    "summary",
-    "rawContent",
-    "visibility",
-    "allowedEmails",
-    "tags",
-    "observationIds",
-    "observations",
-    "schemaVersion",
-    "createdAt"
-  ],
   "additionalProperties": false,
+  "required": ["schemaVersion", "exportedAt", "observations", "observationSets", "memberships"],
   "properties": {
-    "id": {
-      "type": "string",
-      "format": "uuid",
-      "description": "UUIDv7 for the ObservationSet."
+    "schemaVersion": {
+      "const": "2.0.0"
     },
-    "uid": {
-      "type": "string",
-      "description": "Creator's unique identifier."
-    },
-    "observerName": {
-      "type": "string"
-    },
-    "observerPhoto": {
-      "type": "string",
-      "format": "uri"
-    },
-    "type": {
-      "$ref": "#/$defs/ObservationType"
-    },
-    "title": {
-      "type": "string"
-    },
-    "summary": {
-      "type": "string"
-    },
-    "rawContent": {
-      "type": "string"
-    },
-    "imageUrl": {
-      "type": "string",
-      "format": "uri"
-    },
-    "imagePath": {
-      "type": "string"
-    },
-    "location": {
-      "$ref": "#/$defs/LocationData"
-    },
-    "visibility": {
-      "$ref": "#/$defs/VisibilityType"
-    },
-    "allowedEmails": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "tags": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "metadata": {
-      "$ref": "#/$defs/ObservationMetadata"
-    },
-    "observationIds": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "format": "uuid"
-      },
-      "description": "Must match the IDs of the objects in the 'observations' array in the same order."
+    "exportedAt": {
+      "$ref": "#/$defs/DateTime"
     },
     "observations": {
       "type": "array",
-      "items": {
-        "$ref": "#/$defs/Observation"
-      },
-      "description": "The individual Observations belonging to this ObservationSet."
+      "items": { "$ref": "#/$defs/Observation" },
+      "uniqueItems": true
     },
-    "schemaVersion": {
-      "type": "string",
-      "const": "1.0.0"
+    "observationSets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ObservationSet" },
+      "uniqueItems": true
     },
-    "createdAt": {
-      "type": "string",
-      "format": "date-time",
-      "description": "ISO 8601 string representing the creation time."
+    "memberships": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ObservationSetMembership" },
+      "uniqueItems": true
     }
   },
   "$defs": {
+    "UuidV7": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "DateTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "NullableDateTime": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/DateTime" }
+      ]
+    },
     "VisibilityType": {
       "type": "string",
-      "enum": [
-        "public",
-        "authenticated",
-        "shared",
-        "private"
-      ]
+      "enum": ["public", "authenticated", "shared", "private"]
     },
     "ObservationType": {
       "type": "string",
-      "enum": [
-        "nfc",
-        "qr",
-        "object",
-        "ocr",
-        "manual"
-      ]
+      "enum": ["nfc", "qr", "object", "ocr", "manual"]
+    },
+    "NullableString": {
+      "type": ["string", "null"]
     },
     "LocationData": {
       "type": "object",
-      "required": [
-        "latitude",
-        "longitude"
-      ],
       "additionalProperties": false,
+      "required": ["latitude", "longitude"],
       "properties": {
-        "latitude": {
-          "type": "number"
-        },
-        "longitude": {
-          "type": "number"
-        },
-        "accuracy": {
-          "type": "number"
-        },
-        "address": {
-          "type": "string"
-        }
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "accuracy": { "type": "number" },
+        "address": { "type": "string" }
+      }
+    },
+    "NullableLocationData": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/LocationData" }
+      ]
+    },
+    "DetectedObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "category", "confidence"],
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "confidence": { "type": "number" },
+        "description": { "type": "string" }
       }
     },
     "ObservationMetadata": {
       "type": "object",
-      "additionalProperties": true,
       "properties": {
-        "nfcTech": {
-          "type": "string"
-        },
-        "serialNumber": {
-          "type": "string"
-        },
-        "extractedText": {
-          "type": "string"
-        },
-        "language": {
-          "type": "string"
-        },
-        "textType": {
-          "type": "string"
-        },
+        "nfcTech": { "type": "string" },
+        "serialNumber": { "type": "string" },
+        "extractedText": { "type": "string" },
+        "language": { "type": "string" },
+        "textType": { "type": "string" },
         "keyEntities": {
           "type": "array",
-          "items": {
-            "type": "string"
-          }
+          "items": { "type": "string" }
         },
         "detectedObjects": {
           "type": "array",
-          "items": {
-            "type": "object",
-            "required": [
-              "name",
-              "category",
-              "confidence"
-            ],
-            "additionalProperties": false,
-            "properties": {
-              "name": {
-                "type": "string"
-              },
-              "category": {
-                "type": "string"
-              },
-              "confidence": {
-                "type": "number"
-              },
-              "description": {
-                "type": "string"
-              }
-            }
-          }
+          "items": { "$ref": "#/$defs/DetectedObject" }
         }
-      }
+      },
+      "additionalProperties": true
     },
     "Observation": {
       "type": "object",
-      "required": [
-        "id",
-        "parentSetId",
-        "uid",
-        "type",
-        "title",
-        "summary",
-        "rawContent",
-        "visibility",
-        "allowedEmails",
-        "schemaVersion",
-        "createdAt"
-      ],
       "additionalProperties": false,
+      "required": [
+        "id", "uid", "type", "title", "summary", "rawContent", "visibility", "allowedEmails",
+        "metadata", "schemaVersion", "createdAt", "updatedAt", "deletedAt"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/UuidV7" },
+        "uid": { "type": "string", "minLength": 1 },
+        "observerName": { "$ref": "#/$defs/NullableString" },
+        "observerPhoto": { "$ref": "#/$defs/NullableString" },
+        "type": { "$ref": "#/$defs/ObservationType" },
+        "title": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string" },
+        "rawContent": { "type": "string" },
+        "imageUrl": { "$ref": "#/$defs/NullableString" },
+        "imagePath": { "$ref": "#/$defs/NullableString" },
+        "location": { "$ref": "#/$defs/NullableLocationData" },
+        "visibility": { "$ref": "#/$defs/VisibilityType" },
+        "allowedEmails": {
+          "type": "array",
+          "items": { "type": "string", "format": "email" },
+          "uniqueItems": true
+        },
+        "metadata": { "$ref": "#/$defs/ObservationMetadata" },
+        "schemaVersion": { "const": "2.0.0" },
+        "createdAt": { "$ref": "#/$defs/DateTime" },
+        "updatedAt": { "$ref": "#/$defs/DateTime" },
+        "deletedAt": { "$ref": "#/$defs/NullableDateTime" }
+      }
+    },
+    "ObservationSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "uid", "type", "title", "summary", "rawContent", "visibility", "allowedEmails", "tags",
+        "metadata", "schemaVersion", "createdAt", "updatedAt", "deletedAt"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/UuidV7" },
+        "uid": { "type": "string", "minLength": 1 },
+        "observerName": { "$ref": "#/$defs/NullableString" },
+        "observerPhoto": { "$ref": "#/$defs/NullableString" },
+        "type": { "$ref": "#/$defs/ObservationType" },
+        "title": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string" },
+        "rawContent": { "type": "string" },
+        "imageUrl": { "$ref": "#/$defs/NullableString" },
+        "imagePath": { "$ref": "#/$defs/NullableString" },
+        "location": { "$ref": "#/$defs/NullableLocationData" },
+        "visibility": { "$ref": "#/$defs/VisibilityType" },
+        "allowedEmails": {
+          "type": "array",
+          "items": { "type": "string", "format": "email" },
+          "uniqueItems": true
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "metadata": { "$ref": "#/$defs/ObservationMetadata" },
+        "schemaVersion": { "const": "2.0.0" },
+        "createdAt": { "$ref": "#/$defs/DateTime" },
+        "updatedAt": { "$ref": "#/$defs/DateTime" },
+        "deletedAt": { "$ref": "#/$defs/NullableDateTime" }
+      }
+    },
+    "ObservationSetMembership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "observationSetId", "observationId", "uid", "position", "schemaVersion", "createdAt"
+      ],
       "properties": {
         "id": {
           "type": "string",
-          "format": "uuid"
+          "pattern": "^[0-9a-f-]+__[0-9a-f-]+$",
+          "description": "Semantic validation requires `${observationSetId}__${observationId}` exactly."
         },
-        "parentSetId": {
-          "type": "string",
-          "format": "uuid",
-          "description": "Must match the ID of the parent ObservationSet."
-        },
-        "uid": {
-          "type": "string"
-        },
-        "observerName": {
-          "type": "string"
-        },
-        "observerPhoto": {
-          "type": "string",
-          "format": "uri"
-        },
-        "type": {
-          "$ref": "#/$defs/ObservationType"
-        },
-        "title": {
-          "type": "string"
-        },
-        "summary": {
-          "type": "string"
-        },
-        "rawContent": {
-          "type": "string"
-        },
-        "imageUrl": {
-          "type": "string",
-          "format": "uri"
-        },
-        "imagePath": {
-          "type": "string"
-        },
-        "location": {
-          "$ref": "#/$defs/LocationData"
-        },
-        "visibility": {
-          "$ref": "#/$defs/VisibilityType"
-        },
-        "allowedEmails": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "metadata": {
-          "$ref": "#/$defs/ObservationMetadata"
-        },
-        "schemaVersion": {
-          "type": "string",
-          "const": "1.0.0"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        }
+        "observationSetId": { "$ref": "#/$defs/UuidV7" },
+        "observationId": { "$ref": "#/$defs/UuidV7" },
+        "uid": { "type": "string", "minLength": 1 },
+        "position": { "type": "integer", "minimum": 0 },
+        "schemaVersion": { "const": "2.0.0" },
+        "createdAt": { "$ref": "#/$defs/DateTime" }
       }
     }
   }
