@@ -1,0 +1,105 @@
+{
+  "H01": {
+    "executionPlane": "ai-local",
+    "requirementIds": []
+  },
+  "H02": {
+    "executionPlane": "external",
+    "requirementIds": []
+  },
+  "D01": {
+    "executionPlane": "ai-local",
+    "requirementIds": [
+      "R01",
+      "R03"
+    ]
+  },
+  "D02": {
+    "executionPlane": "ai-local",
+    "requirementIds": [
+      "R02"
+    ]
+  },
+  "D03": {
+    "executionPlane": "ai-local",
+    "requirementIds": [
+      "R04"
+    ]
+  },
+  "D04": {
+    "executionPlane": "ai-local",
+    "requirementIds": [
+      "R05"
+    ]
+  },
+  "D05": {
+    "executionPlane": "ai-local",
+    "requirementIds": [
+      "R06"
+    ]
+  },
+  "D06": {
+    "executionPlane": "ai-local",
+    "requirementIds": [
+      "R07"
+    ]
+  },
+  "F01": {
+    "executionPlane": "external",
+    "requirementIds": [
+      "R08"
+    ]
+  },
+  "F02": {
+    "executionPlane": "ai-local",
+    "requirementIds": [
+      "R10"
+    ]
+  },
+  "F03": {
+    "executionPlane": "ai-local",
+    "requirementIds": [
+      "R07",
+      "R09"
+    ]
+  },
+  "F04": {
+    "executionPlane": "external",
+    "requirementIds": [
+      "R08",
+      "R09"
+    ]
+  },
+  "X01": {
+    "executionPlane": "ai-local",
+    "requirementIds": [
+      "R11"
+    ]
+  },
+  "X02": {
+    "executionPlane": "ai-local",
+    "requirementIds": [
+      "R11"
+    ]
+  },
+  "X03": {
+    "executionPlane": "ai-local",
+    "requirementIds": [
+      "R03",
+      "R11"
+    ]
+  },
+  "X04": {
+    "executionPlane": "ai-local",
+    "requirementIds": [
+      "R12"
+    ]
+  },
+  "L01": {
+    "executionPlane": "ai-local",
+    "requirementIds": [
+      "R01",
+      "R12"
+    ]
+  }
+}

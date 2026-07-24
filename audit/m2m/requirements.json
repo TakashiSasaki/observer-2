@@ -1,0 +1,14 @@
+{
+  "R01": "ObservationとObservationSetは独立した正本であり、単一親や観測本体の埋込みを正規形にしない。",
+  "R02": "所属は明示的なMembershipとし、同じObservationSetとObservationの組を一意にする。セット内順序はMembershipに属する。",
+  "R03": "一つのObservationを複数のObservationSetへ所属させられる。",
+  "R04": "セットから外す操作はMembershipだけを削除し、Observationを削除しない。",
+  "R05": "ObservationとObservationSetのクライアント削除は論理削除とし、相手側エンティティを連鎖削除しない。",
+  "R06": "Observationの更新が、所属するすべてのセットの再構築ビューへ反映される。",
+  "R07": "ObservationとObservationSetの可視性およびACLは独立し、セット閲覧権限だけで観測内容を取得できない。",
+  "R08": "`/observations`、`/observationSets`、`/observationSetMemberships`の三コレクションと必要なインデックスを使用する。",
+  "R09": "Security Rulesが所有者、参照先、決定的Membership文書ID、不変フィールドを検証する。2.0.0では同一所有者間の所属だけを許可する。",
+  "R10": "ローカルキャッシュも三エンティティへ正規化し、表示用セットを読み出し時に構築する。",
+  "R11": "交換形式2.0.0を`observations`、`observationSets`、`memberships`の三配列構造とし、構造検証、意味検証、往復検証を行う。",
+  "R12": "v1データの処理方針を明示し、切替後は`parentSetId`、埋込み`observations`、正本としての`observationIds`を書き込まない。"
+}

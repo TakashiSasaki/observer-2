@@ -1,0 +1,45 @@
+{
+  "packetId": "WP00",
+  "attempt": "A1",
+  "changedFiles": [
+    "audit/m2m/requirements.json",
+    "audit/m2m/verification-catalog.json",
+    "audit/m2m/manual-checks.json",
+    "audit/m2m/work-packages.json",
+    "audit/m2m/decisions.json",
+    "audit/m2m/registry-lock.json",
+    "audit/m2m/progress.json",
+    "audit/m2m/handoff.json",
+    "scripts/verify-m2m-harness.mjs",
+    "tests/m2m/harness.test.mjs",
+    "package.json",
+    ".github/workflows/m2m-baseline.yml"
+  ],
+  "executionCommands": [
+    "node --version",
+    "node scripts/verify-m2m-harness.mjs",
+    "node --test tests/m2m/harness.test.mjs",
+    "npm run lint",
+    "npm run build"
+  ],
+  "exitCodes": {
+    "node scripts/verify-m2m-harness.mjs": 0,
+    "node --test tests/m2m/harness.test.mjs": 0,
+    "npm run lint": 0,
+    "npm run build": 0
+  },
+  "localState": "LOCAL_PASS",
+  "externalRequiredVerifications": [
+    "H02"
+  ],
+  "constraints": {
+    "noNewDependencies": true,
+    "noBun": true,
+    "noExternalAccess": true
+  },
+  "notChecked": [
+    "GitHub",
+    "GitHub Actions",
+    "Firebase Emulator"
+  ]
+}

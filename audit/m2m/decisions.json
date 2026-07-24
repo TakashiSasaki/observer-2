@@ -1,0 +1,11 @@
+{
+  "dataSchemaVersion": "2.0.0",
+  "relationshipModel": "explicit-many-to-many-membership",
+  "membershipDocumentId": "setId__observationId",
+  "crossOwnerMembership": "disallowed-in-2.0.0",
+  "entityDeletion": "soft-delete",
+  "setDeletionCascadesToObservations": false,
+  "aclModel": "independent",
+  "membershipPositionTieBreaker": "membership-document-id",
+  "v1FirestoreDataPolicy": "pending-user-decision"
+}
