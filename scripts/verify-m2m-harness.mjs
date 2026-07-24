@@ -406,11 +406,11 @@ if (progress) {
   if ('packetId' in progress && progress.packetId !== 'WP00') {
     error(`progress.json packetId must be 'WP00', got ${safeStr(progress.packetId)}`);
   }
-  if ('attempt' in progress && progress.attempt !== 'A6') {
-    error(`progress.json attempt must be 'A6', got ${safeStr(progress.attempt)}`);
+  if ('attempt' in progress && progress.attempt !== 'A7') {
+    error(`progress.json attempt must be 'A7', got ${safeStr(progress.attempt)}`);
   }
-  if ('externalBaseCommit' in progress && progress.externalBaseCommit !== 'ab1431144e2eb2b671cdd3b16f6c994d8a409e76') {
-    error(`progress.json externalBaseCommit mismatch: expected 'ab1431144e2eb2b671cdd3b16f6c994d8a409e76', got ${safeStr(progress.externalBaseCommit)}`);
+  if ('externalBaseCommit' in progress && progress.externalBaseCommit !== '314dfe745a997a42311934c5dc671b7d330c9413') {
+    error(`progress.json externalBaseCommit mismatch: expected '314dfe745a997a42311934c5dc671b7d330c9413', got ${safeStr(progress.externalBaseCommit)}`);
   }
   if ('externalBaseCommitVerifiedByAgent' in progress && progress.externalBaseCommitVerifiedByAgent !== false) {
     error(`progress.json externalBaseCommitVerifiedByAgent must be false, got ${safeStr(progress.externalBaseCommitVerifiedByAgent)}`);

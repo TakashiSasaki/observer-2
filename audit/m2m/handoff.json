@@ -1,11 +1,17 @@
 {
   "packetId": "WP00",
-  "attempt": "A6",
-  "changedFiles": [
+  "attempt": "A7",
+  "externalBaseCommit": "314dfe745a997a42311934c5dc671b7d330c9413",
+  "externalBaseCommitVerifiedByAgent": false,
+  "modifiedFiles": [
     "scripts/verify-m2m-harness.mjs",
     "tests/m2m/harness.test.mjs",
     "audit/m2m/progress.json",
     "audit/m2m/handoff.json"
+  ],
+  "deletedFiles": [
+    "run_all.sh",
+    "test_out.txt"
   ],
   "executionCommands": [
     "node --version",
@@ -17,29 +23,40 @@
     "git status --short"
   ],
   "exitCodes": {
-    "node --version": { "code": 0, "result": "v22.23.1" },
-    "node scripts/verify-m2m-harness.mjs": { "code": 0, "result": "Success" },
-    "node --test tests/m2m/harness.test.mjs": { "code": 0, "result": "36 tests passed" },
-    "npm run lint": { "code": 0, "result": "Success" },
-    "npm run build": { "code": 0, "result": "Build completed with some chunks warnings" },
-    "git diff --check": { "code": 129, "result": "warning: Not a git repository" },
-    "git status --short": { "code": 128, "result": "fatal: not a git repository (or any of the parent directories): .git" }
+    "node --version": { "code": 0, "result": "v24.14.0" },
+    "node scripts/verify-m2m-harness.mjs": { "code": 0, "result": "Success with no diagnostics" },
+    "node --test tests/m2m/harness.test.mjs": { "code": 0, "result": "36 passed; 0 failed, skipped, or todo" },
+    "npm run lint": { "code": 127, "result": "Blocked because existing dependencies are unavailable: tsc not found" },
+    "npm run build": { "code": 127, "result": "Blocked because existing dependencies are unavailable: vite not found" },
+    "git diff --check": { "code": 0, "result": "Success with no whitespace errors" },
+    "git status --short": { "code": 0, "result": "Four modified files and two deleted files, all within the permitted scope" }
   },
-  "localState": "LOCAL_PASS",
+  "verificationStates": {
+    "H01": "LOCAL_PASS",
+    "H02": "EXTERNAL_PENDING"
+  },
+  "localState": "BLOCKED",
+  "blockers": [
+    "npm run lint cannot run without the existing TypeScript dependency",
+    "npm run build cannot run without the existing Vite dependency"
+  ],
   "externalRequiredVerifications": [
     "H02",
-    "Verify diff, Actions, H01/H02, and permitted scope"
+    "After GitHub publication, externally verify the actual diff, Actions, H01/H02, and permitted change scope"
   ],
   "constraints": {
     "noNewDependencies": true,
     "noBun": true,
-    "noExternalAccess": true
+    "noPackageInstall": true
   },
   "notChecked": [
-    "GitHub",
     "GitHub Actions",
     "Firebase Emulator"
   ],
+  "repositoryCheck": {
+    "githubCheckedForPullRequest": true,
+    "mainResolvedCommit": "314dfe745a997a42311934c5dc671b7d330c9413"
+  },
   "pendingDecisions": {
     "v1FirestoreDataPolicy": "pending-user-decision",
     "lockfileAdoption": "pending-decision"
