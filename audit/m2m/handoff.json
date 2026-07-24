@@ -1,6 +1,6 @@
 {
   "packetId": "WP00",
-  "attempt": "A5",
+  "attempt": "A6",
   "changedFiles": [
     "scripts/verify-m2m-harness.mjs",
     "tests/m2m/harness.test.mjs",
@@ -19,7 +19,7 @@
   "exitCodes": {
     "node --version": { "code": 0, "result": "v22.23.1" },
     "node scripts/verify-m2m-harness.mjs": { "code": 0, "result": "Success" },
-    "node --test tests/m2m/harness.test.mjs": { "code": 0, "result": "31 tests passed" },
+    "node --test tests/m2m/harness.test.mjs": { "code": 0, "result": "36 tests passed" },
     "npm run lint": { "code": 0, "result": "Success" },
     "npm run build": { "code": 0, "result": "Build completed with some chunks warnings" },
     "git diff --check": { "code": 129, "result": "warning: Not a git repository" },

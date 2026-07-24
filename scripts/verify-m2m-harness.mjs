@@ -200,6 +200,17 @@ const parseJsonSafe = (buf, name) => {
   }
 };
 
+const safeStr = (v) => {
+  try {
+    return JSON.stringify(v);
+  } catch (e) {
+    if (v === null) return 'null';
+    if (Array.isArray(v)) return 'array';
+    if (typeof v === 'object') return 'object';
+    return typeof v;
+  }
+};
+
 const checkIsObject = (parsedRes, name) => {
   if (!parsedRes.ok) return null;
   const val = parsedRes.value;
@@ -260,7 +271,7 @@ const checkObjectFixedStringValues = (obj, expectedKeys, name) => {
     if (k in obj) {
       const v = obj[k];
       if (typeof v !== 'string' || v.trim().length === 0) {
-        error(`Value for ${k} in ${name} must be a non-empty string`);
+        error(`Value for ${k} in ${name} must be a non-empty string, got ${safeStr(v)}`);
       }
     }
   }
@@ -280,6 +291,7 @@ if (catalog) {
   if (extraCatalogKeys.length) error(`Unknown IDs in verification-catalog: ${extraCatalogKeys.join(', ')}`);
   if (missingCatalogKeys.length) error(`Missing IDs in verification-catalog: ${missingCatalogKeys.join(', ')}`);
 
+  const coveredReqs = new Set();
   for (const [id, expectedSpec] of Object.entries(expectedCatalogSpecs)) {
     if (!(id in catalog)) continue;
     const entry = catalog[id];
@@ -293,37 +305,52 @@ if (catalog) {
     const expectedEntryKeys = ['executionPlane', 'requirementIds'];
     const extraEntryKeys = entryKeys.filter(k => !expectedEntryKeys.includes(k));
     const missingEntryKeys = expectedEntryKeys.filter(k => !entryKeys.includes(k));
-    if (extraEntryKeys.length) error(`Unknown keys in verification-catalog item ${id}: ${extraEntryKeys.join(', ')}`);
-    if (missingEntryKeys.length) error(`Missing keys in verification-catalog item ${id}: ${missingEntryKeys.join(', ')}`);
+    let keysMatch = true;
+    if (extraEntryKeys.length) {
+      error(`Unknown keys in verification-catalog item ${id}: ${extraEntryKeys.join(', ')}`);
+      keysMatch = false;
+    }
+    if (missingEntryKeys.length) {
+      error(`Missing keys in verification-catalog item ${id}: ${missingEntryKeys.join(', ')}`);
+      keysMatch = false;
+    }
 
+    let planeMatch = false;
     if ('executionPlane' in entry) {
-      if (entry.executionPlane !== expectedSpec.executionPlane) {
-        error(`executionPlane mismatch for ${id}: expected '${expectedSpec.executionPlane}', got '${entry.executionPlane}'`);
+      if (typeof entry.executionPlane !== 'string') {
+        error(`executionPlane mismatch for ${id}: expected '${expectedSpec.executionPlane}', got ${safeStr(entry.executionPlane)}`);
+      } else if (entry.executionPlane !== expectedSpec.executionPlane) {
+        error(`executionPlane mismatch for ${id}: expected '${expectedSpec.executionPlane}', got ${safeStr(entry.executionPlane)}`);
+      } else {
+        planeMatch = true;
       }
     }
 
+    let reqMatch = false;
     if ('requirementIds' in entry) {
       if (!Array.isArray(entry.requirementIds)) {
-        error(`requirementIds for ${id} must be an array`);
+        error(`requirementIds for ${id} must be an array, got ${safeStr(entry.requirementIds)}`);
       } else {
-        const isSameLength = entry.requirementIds.length === expectedSpec.requirementIds.length;
-        const isSameElements = isSameLength && entry.requirementIds.every((r, idx) => r === expectedSpec.requirementIds[idx]);
-        if (!isSameElements) {
-          error(`requirementIds mismatch for ${id}: expected [${expectedSpec.requirementIds.join(', ')}], got [${entry.requirementIds.join(', ')}]`);
+        const isStringArray = entry.requirementIds.every(x => typeof x === 'string');
+        if (!isStringArray) {
+          error(`requirementIds mismatch for ${id}: expected [${expectedSpec.requirementIds.join(', ')}], got ${safeStr(entry.requirementIds)}`);
+        } else {
+          const isSameLength = entry.requirementIds.length === expectedSpec.requirementIds.length;
+          const isSameElements = isSameLength && entry.requirementIds.every((r, idx) => r === expectedSpec.requirementIds[idx]);
+          if (!isSameElements) {
+            error(`requirementIds mismatch for ${id}: expected [${expectedSpec.requirementIds.join(', ')}], got ${safeStr(entry.requirementIds)}`);
+          } else {
+            reqMatch = true;
+          }
         }
       }
     }
-  }
 
-  // Requirement coverage check excluding H01 and H02
-  const coveredReqs = new Set();
-  for (const [id, entry] of Object.entries(catalog)) {
-    if (id !== 'H01' && id !== 'H02' && entry && typeof entry === 'object' && !Array.isArray(entry) && Array.isArray(entry.requirementIds)) {
-      entry.requirementIds.forEach(r => {
-        if (typeof r === 'string') coveredReqs.add(r);
-      });
+    if (id !== 'H01' && id !== 'H02' && keysMatch && planeMatch && reqMatch) {
+      entry.requirementIds.forEach(r => coveredReqs.add(r));
     }
   }
+
   expectedReqs.forEach(r => {
     if (!coveredReqs.has(r)) {
       error(`Requirement ${r} is not covered by any valid non-meta verification.`);
@@ -377,22 +404,22 @@ if (progress) {
   if (missingProgressKeys.length) error(`Missing keys in progress.json: ${missingProgressKeys.join(', ')}`);
 
   if ('packetId' in progress && progress.packetId !== 'WP00') {
-    error(`progress.json packetId must be 'WP00', got '${progress.packetId}'`);
+    error(`progress.json packetId must be 'WP00', got ${safeStr(progress.packetId)}`);
   }
-  if ('attempt' in progress && progress.attempt !== 'A5') {
-    error(`progress.json attempt must be 'A5', got '${progress.attempt}'`);
+  if ('attempt' in progress && progress.attempt !== 'A6') {
+    error(`progress.json attempt must be 'A6', got ${safeStr(progress.attempt)}`);
   }
-  if ('externalBaseCommit' in progress && progress.externalBaseCommit !== '4c0753f4d495bfc03056ec330c554647a8405a4b') {
-    error(`progress.json externalBaseCommit mismatch: expected '4c0753f4d495bfc03056ec330c554647a8405a4b', got '${progress.externalBaseCommit}'`);
+  if ('externalBaseCommit' in progress && progress.externalBaseCommit !== 'ab1431144e2eb2b671cdd3b16f6c994d8a409e76') {
+    error(`progress.json externalBaseCommit mismatch: expected 'ab1431144e2eb2b671cdd3b16f6c994d8a409e76', got ${safeStr(progress.externalBaseCommit)}`);
   }
   if ('externalBaseCommitVerifiedByAgent' in progress && progress.externalBaseCommitVerifiedByAgent !== false) {
-    error(`progress.json externalBaseCommitVerifiedByAgent must be false`);
+    error(`progress.json externalBaseCommitVerifiedByAgent must be false, got ${safeStr(progress.externalBaseCommitVerifiedByAgent)}`);
   }
   if ('H01' in progress && progress.H01 !== 'LOCAL_PASS') {
-    error(`progress.json H01 state must be 'LOCAL_PASS', got '${progress.H01}'`);
+    error(`progress.json H01 state must be 'LOCAL_PASS', got ${safeStr(progress.H01)}`);
   }
   if ('H02' in progress && progress.H02 !== 'EXTERNAL_PENDING') {
-    error(`progress.json H02 state must be 'EXTERNAL_PENDING', got '${progress.H02}'`);
+    error(`progress.json H02 state must be 'EXTERNAL_PENDING', got ${safeStr(progress.H02)}`);
   }
 
   const plannedKeys = [
@@ -404,12 +431,12 @@ if (progress) {
   ];
   for (const id of plannedKeys) {
     if (id in progress && progress[id] !== 'PLANNED') {
-      error(`progress.json ${id} state must be 'PLANNED', got '${progress[id]}'`);
+      error(`progress.json ${id} state must be 'PLANNED', got ${safeStr(progress[id])}`);
     }
   }
 
   if (progress.WP00 === 'ACCEPTED') {
-    error(`progress.json WP00 state cannot be 'ACCEPTED'`);
+    error(`progress.json WP00 state cannot be 'ACCEPTED', got ${safeStr(progress.WP00)}`);
   }
 }
 

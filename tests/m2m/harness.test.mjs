@@ -276,10 +276,10 @@ test('packetId、attempt、externalBaseCommit、externalBaseCommitVerifiedByAgen
   });
   res = runVerify(tmp);
   assert.strictEqual(res.success, false);
-  assert.match(res.output, /attempt must be 'A5'/);
+  assert.match(res.output, /attempt must be 'A6'/);
 
   updateFile(tmp, 'progress.json', d => {
-    d['attempt'] = 'A5';
+    d['attempt'] = 'A6';
     d['externalBaseCommit'] = 'badcommit';
   });
   res = runVerify(tmp);
@@ -287,12 +287,90 @@ test('packetId、attempt、externalBaseCommit、externalBaseCommitVerifiedByAgen
   assert.match(res.output, /externalBaseCommit mismatch/);
 
   updateFile(tmp, 'progress.json', d => {
-    d['externalBaseCommit'] = '4c0753f4d495bfc03056ec330c554647a8405a4b';
+    d['externalBaseCommit'] = 'ab1431144e2eb2b671cdd3b16f6c994d8a409e76';
     d['externalBaseCommitVerifiedByAgent'] = true;
   });
   res = runVerify(tmp);
   assert.strictEqual(res.success, false);
   assert.match(res.output, /externalBaseCommitVerifiedByAgent must be false/);
+});
+
+// New A6 regression tests
+
+test('D02の requirementIds を {"toString": null} などのオブジェクト配列にし、H02をLOCAL_PASSにした場合、型不一致と状態不一致が両方診断され例外が出ない', () => {
+  const tmp = setupTemp();
+  updateFile(tmp, 'verification-catalog.json', d => {
+    d['D02'].requirementIds = [{ toString: null }];
+  });
+  updateFile(tmp, 'progress.json', d => {
+    d['H02'] = 'LOCAL_PASS';
+  });
+  rehash(tmp);
+  const res = runVerify(tmp);
+  assert.strictEqual(res.success, false);
+  assert.match(res.output, /requirementIds mismatch for D02/);
+  assert.match(res.output, /H02 state must be 'EXTERNAL_PENDING'/);
+  assert.doesNotMatch(res.output, /TypeError/);
+  assert.doesNotMatch(res.output, /Cannot convert object to primitive value/);
+});
+
+test('F01の executionPlane を {"toString": null} のようなオブジェクトにし、H02をLOCAL_PASSにした場合、例外が出ずに両方診断される', () => {
+  const tmp = setupTemp();
+  updateFile(tmp, 'verification-catalog.json', d => {
+    d['F01'].executionPlane = { toString: null };
+  });
+  updateFile(tmp, 'progress.json', d => {
+    d['H02'] = 'LOCAL_PASS';
+  });
+  rehash(tmp);
+  const res = runVerify(tmp);
+  assert.strictEqual(res.success, false);
+  assert.match(res.output, /executionPlane mismatch for F01/);
+  assert.match(res.output, /H02 state must be 'EXTERNAL_PENDING'/);
+  assert.doesNotMatch(res.output, /TypeError/);
+});
+
+test('progress.json の packetId をオブジェクトにし、H02をLOCAL_PASSにした場合、例外が出ずに両方診断される', () => {
+  const tmp = setupTemp();
+  updateFile(tmp, 'progress.json', d => {
+    d['packetId'] = { toString: null };
+    d['H02'] = 'LOCAL_PASS';
+  });
+  const res = runVerify(tmp);
+  assert.strictEqual(res.success, false);
+  assert.match(res.output, /packetId must be 'WP00'/);
+  assert.match(res.output, /H02 state must be 'EXTERNAL_PENDING'/);
+  assert.doesNotMatch(res.output, /TypeError/);
+});
+
+test('X04とL01からR12を外し、固定仕様に合わないD01へR12を追加した場合、D01/X04/L01の不一致が診断され、かつD01が無効として扱われR12カバレッジ不足が診断される', () => {
+  const tmp = setupTemp();
+  updateFile(tmp, 'verification-catalog.json', d => {
+    d['X04'].requirementIds = d['X04'].requirementIds.filter(r => r !== 'R12');
+    d['L01'].requirementIds = d['L01'].requirementIds.filter(r => r !== 'R12');
+    d['D01'].requirementIds.push('R12'); // D01 fails req mismatch
+  });
+  rehash(tmp);
+  const res = runVerify(tmp);
+  assert.strictEqual(res.success, false);
+  assert.match(res.output, /requirementIds mismatch for X04/);
+  assert.match(res.output, /requirementIds mismatch for L01/);
+  assert.match(res.output, /requirementIds mismatch for D01/);
+  assert.match(res.output, /Requirement R12 is not covered by any valid non-meta verification/);
+});
+
+test('未知のカタログIDへR12を設定しても、R12がカバーされたとみなされない', () => {
+  const tmp = setupTemp();
+  updateFile(tmp, 'verification-catalog.json', d => {
+    d['X04'].requirementIds = d['X04'].requirementIds.filter(r => r !== 'R12');
+    d['L01'].requirementIds = d['L01'].requirementIds.filter(r => r !== 'R12');
+    d['X99'] = { executionPlane: 'ai-local', requirementIds: ['R12'] };
+  });
+  rehash(tmp);
+  const res = runVerify(tmp);
+  assert.strictEqual(res.success, false);
+  assert.match(res.output, /Unknown IDs in verification-catalog: X99/);
+  assert.match(res.output, /Requirement R12 is not covered by any valid non-meta verification/);
 });
 
 // New A5 regression tests
