@@ -1,6 +1,7 @@
 import {
   collection,
   getDocs,
+  getDoc,
   doc,
   setDoc,
   updateDoc,
@@ -97,12 +98,18 @@ export async function createObservation(obsData: Omit<ObservationSet, 'id'> & { 
       // 2. Save individual sub-observations to /singleObservations collection if present
       if (model.observations && model.observations.length > 0) {
         for (const singleObs of model.observations) {
+          const childVis = singleObs.visibility || model.visibility;
+          const childAllowed = childVis === 'shared'
+            ? (singleObs.allowedEmails && singleObs.allowedEmails.length > 0 ? singleObs.allowedEmails : model.allowedEmails || [])
+            : [];
           const singleRef = doc(db, 'singleObservations', singleObs.id);
           batch.set(singleRef, {
             ...singleObs,
             parentSetId: model.id,
             uid: model.uid,
             userId: model.uid,
+            visibility: childVis,
+            allowedEmails: childAllowed,
             schemaVersion: singleObs.schemaVersion || '1.0.0',
             createdAt: Timestamp.now(),
           });
@@ -212,33 +219,107 @@ export async function fetchObservations(
 export async function updateObservationVisibility(
   id: string,
   newVisibility: VisibilityType,
-  allowedEmails: string[] = []
+  allowedEmails: string[] = [],
+  observationIds?: string[]
 ): Promise<void> {
   const sanitizedAllowedEmails = newVisibility === 'shared' ? allowedEmails : [];
-  try {
-    if (auth.currentUser) {
-      const docRef = doc(db, COLLECTION_NAME, id);
-      await updateDoc(docRef, { visibility: newVisibility, allowedEmails: sanitizedAllowedEmails });
+
+  if (auth.currentUser) {
+    let targetChildIds = observationIds;
+    if (!targetChildIds) {
+      try {
+        const parentSnap = await getDoc(doc(db, COLLECTION_NAME, id));
+        if (parentSnap.exists()) {
+          const pData = parentSnap.data();
+          if (Array.isArray(pData.observationIds)) {
+            targetChildIds = pData.observationIds;
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch parent doc for child observation IDs:', err);
+      }
     }
-  } catch (e) {
-    console.warn('Firestore update error:', e);
+
+    const childIds = targetChildIds || [];
+    if (childIds.length + 1 > 500) {
+      throw new Error('更新対象の観測件数がバッチ書き込み上限（500件）を超えています。');
+    }
+
+    const batch = writeBatch(db);
+    const parentRef = doc(db, COLLECTION_NAME, id);
+    batch.update(parentRef, {
+      visibility: newVisibility,
+      allowedEmails: sanitizedAllowedEmails,
+    });
+
+    for (const childId of childIds) {
+      const childRef = doc(db, 'singleObservations', childId);
+      batch.update(childRef, {
+        visibility: newVisibility,
+        allowedEmails: sanitizedAllowedEmails,
+      });
+    }
+
+    await batch.commit();
   }
 
   // Sync local cache
   const local = getLocalObservations();
-  const updated = local.map((item) => (item.id === id ? { ...item, visibility: newVisibility, allowedEmails: sanitizedAllowedEmails } : item));
+  const updated = local.map((item) => {
+    if (item.id === id) {
+      const updatedChildObs = (item.observations || []).map((o) => ({
+        ...o,
+        visibility: newVisibility,
+        allowedEmails: sanitizedAllowedEmails,
+      }));
+      return {
+        ...item,
+        visibility: newVisibility,
+        allowedEmails: sanitizedAllowedEmails,
+        observations: updatedChildObs,
+      };
+    }
+    return item;
+  });
   saveLocalObservations(updated);
 }
 
 // Delete Observation
-export async function deleteObservation(id: string): Promise<void> {
-  try {
-    if (auth.currentUser) {
-      const docRef = doc(db, COLLECTION_NAME, id);
-      await deleteDoc(docRef);
+export async function deleteObservation(
+  id: string,
+  observationIds?: string[]
+): Promise<void> {
+  if (auth.currentUser) {
+    let targetChildIds = observationIds;
+    if (!targetChildIds) {
+      try {
+        const parentSnap = await getDoc(doc(db, COLLECTION_NAME, id));
+        if (parentSnap.exists()) {
+          const pData = parentSnap.data();
+          if (Array.isArray(pData.observationIds)) {
+            targetChildIds = pData.observationIds;
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch parent doc for deletion:', err);
+      }
     }
-  } catch (e) {
-    console.warn('Firestore delete error:', e);
+
+    const childIds = targetChildIds || [];
+    if (childIds.length + 1 > 500) {
+      throw new Error('削除対象の観測件数がバッチ書き込み上限（500件）を超えています。');
+    }
+
+    const batch = writeBatch(db);
+    const parentRef = doc(db, COLLECTION_NAME, id);
+    batch.delete(parentRef);
+
+    for (const childId of childIds) {
+      const childRef = doc(db, 'singleObservations', childId);
+      batch.delete(childRef);
+    }
+
+    await batch.commit();
   }
 
   // Sync local cache

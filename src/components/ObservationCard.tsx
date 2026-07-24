@@ -24,7 +24,7 @@ interface ObservationCardProps {
   observation: ObservationSet;
   currentUserId?: string;
   onSelect: (obs: ObservationSet) => void;
-  onVisibilityChange: (id: string, newVis: VisibilityType) => void;
+  onVisibilityChange: (id: string, newVis: VisibilityType, allowedEmails?: string[]) => void;
   onDelete: (id: string) => void;
 }
 

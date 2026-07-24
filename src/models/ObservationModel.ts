@@ -181,7 +181,6 @@ export class ObservationSetModel implements ObservationSet {
       metadata: this.metadata || {},
       observationIds: this.observationIds || this.observations.map((o) => o.id),
       observations: this.observations || [],
-      subObservations: this.observations || [],
       schemaVersion: this.schemaVersion || '1.0.0',
       createdAt: this.createdAt,
     };

@@ -23,7 +23,7 @@ interface ObservationDetailModalProps {
   observation: ObservationSet | null;
   currentUserId?: string;
   onClose: () => void;
-  onVisibilityChange: (id: string, newVis: VisibilityType) => void;
+  onVisibilityChange: (id: string, newVis: VisibilityType, allowedEmails?: string[]) => void;
 }
 
 export const ObservationDetailModal: React.FC<ObservationDetailModalProps> = ({

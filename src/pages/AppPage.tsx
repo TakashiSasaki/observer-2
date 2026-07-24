@@ -145,22 +145,55 @@ export default function AppPage() {
   };
 
   // Handle Visibility Toggle
-  const handleVisibilityChange = async (id: string, newVis: VisibilityType) => {
-    await updateObservationVisibility(id, newVis);
-    setObservations((prev) =>
-      prev.map((o) => (o.id === id ? { ...o, visibility: newVis } : o))
-    );
-    if (selectedObservation && selectedObservation.id === id) {
-      setSelectedObservation({ ...selectedObservation, visibility: newVis });
+  const handleVisibilityChange = async (id: string, newVis: VisibilityType, allowedEmails?: string[]) => {
+    const target = observations.find((o) => o.id === id);
+    const emailsToSave = newVis === 'shared' ? (allowedEmails || target?.allowedEmails || []) : [];
+    try {
+      await updateObservationVisibility(id, newVis, emailsToSave, target?.observationIds);
+      setObservations((prev) =>
+        prev.map((o) => {
+          if (o.id === id) {
+            const updatedChildObs = (o.observations || []).map((child) => ({
+              ...child,
+              visibility: newVis,
+              allowedEmails: emailsToSave,
+            }));
+            return { ...o, visibility: newVis, allowedEmails: emailsToSave, observations: updatedChildObs };
+          }
+          return o;
+        })
+      );
+      if (selectedObservation && selectedObservation.id === id) {
+        const updatedChildObs = (selectedObservation.observations || []).map((child) => ({
+          ...child,
+          visibility: newVis,
+          allowedEmails: emailsToSave,
+        }));
+        setSelectedObservation({
+          ...selectedObservation,
+          visibility: newVis,
+          allowedEmails: emailsToSave,
+          observations: updatedChildObs,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to update visibility:', err);
+      alert('開示範囲の更新に失敗しました。');
     }
   };
 
   // Handle Delete
   const handleDeleteObservation = async (id: string) => {
-    await deleteObservation(id);
-    setObservations((prev) => prev.filter((o) => o.id !== id));
-    if (selectedObservation?.id === id) {
-      setSelectedObservation(null);
+    const target = observations.find((o) => o.id === id);
+    try {
+      await deleteObservation(id, target?.observationIds);
+      setObservations((prev) => prev.filter((o) => o.id !== id));
+      if (selectedObservation?.id === id) {
+        setSelectedObservation(null);
+      }
+    } catch (err) {
+      console.error('Failed to delete observation:', err);
+      alert('観測ログの削除に失敗しました。');
     }
   };
 

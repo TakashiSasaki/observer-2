@@ -33,10 +33,16 @@ service cloud.firestore {
 
     // Single Observations Collection (個別の独立観測データ: 複数の観測セットから参照可能)
     match /singleObservations/{obsId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAuthenticated() && 
+      allow read: if resource.data.visibility == 'public' ||
+                     (resource.data.visibility == 'authenticated' && isAuthenticated()) ||
+                     (resource.data.visibility == 'shared' && isEmailAllowed()) ||
+                     isDocOwner();
+
+      allow create: if isAuthenticated() && 
         ((request.resource.data.keys().hasAll(['uid']) && request.resource.data.uid == request.auth.uid) ||
          (request.resource.data.keys().hasAll(['userId']) && request.resource.data.userId == request.auth.uid));
+
+      allow update, delete: if isDocOwner();
     }
 
     // Observation Sets Collection (観測セットデータ: observationIds 配列で複数観測を参照可能)
