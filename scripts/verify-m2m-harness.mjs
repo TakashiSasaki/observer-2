@@ -15,9 +15,9 @@ const error = (msg) => {
   hasError = true;
 };
 
-const getRaw = (file) => {
+const getRawBuffer = (file) => {
   try {
-    return fs.readFileSync(path.join(rootDir, file), 'utf-8');
+    return fs.readFileSync(path.join(rootDir, file));
   } catch (e) {
     error(`Missing file: ${file}`);
     return null;
@@ -160,39 +160,70 @@ function findDuplicateKeysInJson(jsonString) {
   return { syntaxError: null, duplicates };
 }
 
-const parseJsonSafe = (raw, name) => {
-  if (!raw) return null;
-  const res = findDuplicateKeysInJson(raw);
-  if (res.syntaxError) {
-    error(`Syntax error in ${name}: ${res.syntaxError}`);
-    return null;
+const parseJsonSafe = (buf, name) => {
+  if (buf === null) {
+    return { value: null, ok: false };
   }
+  if (buf.length === 0) {
+    error(`Empty JSON document in ${name}`);
+    return { value: null, ok: false };
+  }
+  let jsonString;
+  try {
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    jsonString = decoder.decode(buf);
+  } catch (err) {
+    error(`Invalid UTF-8 encoding in ${name}: ${err.message}`);
+    return { value: null, ok: false };
+  }
+  if (jsonString.trim().length === 0) {
+    error(`Empty JSON document in ${name}`);
+    return { value: null, ok: false };
+  }
+
+  const res = findDuplicateKeysInJson(jsonString);
   if (res.duplicates.length > 0) {
     res.duplicates.forEach(d => {
       error(`Duplicate key in ${name} at ${d.path}: '${d.key}'`);
     });
   }
+  if (res.syntaxError) {
+    error(`Syntax error in ${name}: ${res.syntaxError}`);
+    return { value: null, ok: false };
+  }
   try {
-    return JSON.parse(raw);
+    const val = JSON.parse(jsonString);
+    return { value: val, ok: true };
   } catch (e) {
     error(`Syntax error in ${name}: ${e.message}`);
-    return null;
+    return { value: null, ok: false };
   }
 };
 
-const rawReqs = getRaw('audit/m2m/requirements.json');
-const rawCatalog = getRaw('audit/m2m/verification-catalog.json');
-const rawManual = getRaw('audit/m2m/manual-checks.json');
-const rawWps = getRaw('audit/m2m/work-packages.json');
-const rawProgress = getRaw('audit/m2m/progress.json');
-const rawLock = getRaw('audit/m2m/registry-lock.json');
+const checkIsObject = (parsedRes, name) => {
+  if (!parsedRes.ok) return null;
+  const val = parsedRes.value;
+  if (val === null || typeof val !== 'object' || Array.isArray(val)) {
+    const actualType = val === null ? 'null' : Array.isArray(val) ? 'array' : typeof val;
+    error(`${name} root must be a JSON object, got ${actualType}`);
+    return null;
+  }
+  return val;
+};
 
-const reqs = parseJsonSafe(rawReqs, 'requirements.json');
-const catalog = parseJsonSafe(rawCatalog, 'verification-catalog.json');
-const manual = parseJsonSafe(rawManual, 'manual-checks.json');
-const wps = parseJsonSafe(rawWps, 'work-packages.json');
-const progress = parseJsonSafe(rawProgress, 'progress.json');
-const lock = parseJsonSafe(rawLock, 'registry-lock.json');
+const rawReqs = getRawBuffer('audit/m2m/requirements.json');
+const rawCatalog = getRawBuffer('audit/m2m/verification-catalog.json');
+const rawManual = getRawBuffer('audit/m2m/manual-checks.json');
+const rawWps = getRawBuffer('audit/m2m/work-packages.json');
+const rawProgress = getRawBuffer('audit/m2m/progress.json');
+const rawLock = getRawBuffer('audit/m2m/registry-lock.json');
+
+const reqs = checkIsObject(parseJsonSafe(rawReqs, 'requirements.json'), 'requirements.json');
+const catalog = checkIsObject(parseJsonSafe(rawCatalog, 'verification-catalog.json'), 'verification-catalog.json');
+const manual = checkIsObject(parseJsonSafe(rawManual, 'manual-checks.json'), 'manual-checks.json');
+const wps = checkIsObject(parseJsonSafe(rawWps, 'work-packages.json'), 'work-packages.json');
+const progress = checkIsObject(parseJsonSafe(rawProgress, 'progress.json'), 'progress.json');
+const lock = checkIsObject(parseJsonSafe(rawLock, 'registry-lock.json'), 'registry-lock.json');
 
 const expectedReqs = ["R01", "R02", "R03", "R04", "R05", "R06", "R07", "R08", "R09", "R10", "R11", "R12"];
 const expectedManual = ["M01", "M02", "M03"];
@@ -218,17 +249,26 @@ const expectedCatalogSpecs = {
   "L01": { executionPlane: "ai-local", requirementIds: ["R01", "R12"] }
 };
 
-const checkKeys = (obj, expected, name) => {
+const checkObjectFixedStringValues = (obj, expectedKeys, name) => {
+  if (!obj) return;
   const keys = Object.keys(obj);
-  const extra = keys.filter(k => !expected.includes(k));
-  const missing = expected.filter(k => !keys.includes(k));
+  const extra = keys.filter(k => !expectedKeys.includes(k));
+  const missing = expectedKeys.filter(k => !keys.includes(k));
   if (extra.length) error(`Unknown IDs in ${name}: ${extra.join(', ')}`);
   if (missing.length) error(`Missing IDs in ${name}: ${missing.join(', ')}`);
+  for (const k of expectedKeys) {
+    if (k in obj) {
+      const v = obj[k];
+      if (typeof v !== 'string' || v.trim().length === 0) {
+        error(`Value for ${k} in ${name} must be a non-empty string`);
+      }
+    }
+  }
 };
 
-if (reqs) checkKeys(reqs, expectedReqs, 'requirements.json');
-if (manual) checkKeys(manual, expectedManual, 'manual-checks.json');
-if (wps) checkKeys(wps, expectedWps, 'work-packages.json');
+checkObjectFixedStringValues(reqs, expectedReqs, 'requirements.json');
+checkObjectFixedStringValues(manual, expectedManual, 'manual-checks.json');
+checkObjectFixedStringValues(wps, expectedWps, 'work-packages.json');
 
 // Exact catalog mapping checks
 if (catalog) {
@@ -241,20 +281,36 @@ if (catalog) {
   if (missingCatalogKeys.length) error(`Missing IDs in verification-catalog: ${missingCatalogKeys.join(', ')}`);
 
   for (const [id, expectedSpec] of Object.entries(expectedCatalogSpecs)) {
+    if (!(id in catalog)) continue;
     const entry = catalog[id];
-    if (!entry) continue;
-
-    if (entry.executionPlane !== expectedSpec.executionPlane) {
-      error(`executionPlane mismatch for ${id}: expected '${expectedSpec.executionPlane}', got '${entry.executionPlane}'`);
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+      const actualType = entry === null ? 'null' : Array.isArray(entry) ? 'array' : typeof entry;
+      error(`verification-catalog item ${id} must be an object, got ${actualType}`);
+      continue;
     }
 
-    if (!Array.isArray(entry.requirementIds)) {
-      error(`requirementIds for ${id} must be an array`);
-    } else {
-      const isSameLength = entry.requirementIds.length === expectedSpec.requirementIds.length;
-      const isSameElements = isSameLength && entry.requirementIds.every((r, idx) => r === expectedSpec.requirementIds[idx]);
-      if (!isSameElements) {
-        error(`requirementIds mismatch for ${id}: expected [${expectedSpec.requirementIds.join(', ')}], got [${entry.requirementIds.join(', ')}]`);
+    const entryKeys = Object.keys(entry);
+    const expectedEntryKeys = ['executionPlane', 'requirementIds'];
+    const extraEntryKeys = entryKeys.filter(k => !expectedEntryKeys.includes(k));
+    const missingEntryKeys = expectedEntryKeys.filter(k => !entryKeys.includes(k));
+    if (extraEntryKeys.length) error(`Unknown keys in verification-catalog item ${id}: ${extraEntryKeys.join(', ')}`);
+    if (missingEntryKeys.length) error(`Missing keys in verification-catalog item ${id}: ${missingEntryKeys.join(', ')}`);
+
+    if ('executionPlane' in entry) {
+      if (entry.executionPlane !== expectedSpec.executionPlane) {
+        error(`executionPlane mismatch for ${id}: expected '${expectedSpec.executionPlane}', got '${entry.executionPlane}'`);
+      }
+    }
+
+    if ('requirementIds' in entry) {
+      if (!Array.isArray(entry.requirementIds)) {
+        error(`requirementIds for ${id} must be an array`);
+      } else {
+        const isSameLength = entry.requirementIds.length === expectedSpec.requirementIds.length;
+        const isSameElements = isSameLength && entry.requirementIds.every((r, idx) => r === expectedSpec.requirementIds[idx]);
+        if (!isSameElements) {
+          error(`requirementIds mismatch for ${id}: expected [${expectedSpec.requirementIds.join(', ')}], got [${entry.requirementIds.join(', ')}]`);
+        }
       }
     }
   }
@@ -262,8 +318,10 @@ if (catalog) {
   // Requirement coverage check excluding H01 and H02
   const coveredReqs = new Set();
   for (const [id, entry] of Object.entries(catalog)) {
-    if (id !== 'H01' && id !== 'H02' && Array.isArray(entry.requirementIds)) {
-      entry.requirementIds.forEach(r => coveredReqs.add(r));
+    if (id !== 'H01' && id !== 'H02' && entry && typeof entry === 'object' && !Array.isArray(entry) && Array.isArray(entry.requirementIds)) {
+      entry.requirementIds.forEach(r => {
+        if (typeof r === 'string') coveredReqs.add(r);
+      });
     }
   }
   expectedReqs.forEach(r => {
@@ -271,6 +329,23 @@ if (catalog) {
       error(`Requirement ${r} is not covered by any valid non-meta verification.`);
     }
   });
+}
+
+// Registry lock object validation
+if (lock) {
+  const lockKeys = Object.keys(lock);
+  const extraLockKeys = lockKeys.filter(k => k !== 'hash');
+  if (!('hash' in lock)) {
+    error(`Missing 'hash' key in registry-lock.json`);
+  }
+  if (extraLockKeys.length > 0) {
+    error(`Unknown keys in registry-lock.json: ${extraLockKeys.join(', ')}`);
+  }
+  if ('hash' in lock) {
+    if (typeof lock.hash !== 'string' || !/^[0-9a-f]{64}$/.test(lock.hash)) {
+      error(`registry-lock.json 'hash' must be a 64-character lowercase hexadecimal string`);
+    }
+  }
 }
 
 // Registry Hash check
@@ -281,35 +356,54 @@ if (rawReqs !== null && rawCatalog !== null && rawManual !== null && rawWps !== 
   hash.update(rawManual);
   hash.update(rawWps);
   const actualHash = hash.digest('hex');
-  if (lock && actualHash !== lock.hash) {
+  if (lock && typeof lock.hash === 'string' && /^[0-9a-f]{64}$/.test(lock.hash) && actualHash !== lock.hash) {
     error(`Registry lock hash mismatch. Expected ${lock.hash}, got ${actualHash}`);
   }
 }
 
 // Progress state constraints
 if (progress) {
-  if (progress.packetId !== 'WP00') {
+  const expectedProgressKeys = [
+    "packetId", "attempt", "externalBaseCommit", "externalBaseCommitVerifiedByAgent",
+    "H01", "H02", "D01", "D02", "D03", "D04", "D05", "D06",
+    "F01", "F02", "F03", "F04", "X01", "X02", "X03", "X04", "L01",
+    "M01", "M02", "M03",
+    "WP00", "WP01", "WP02", "WP03", "WP04", "WP05", "WP06", "WP07"
+  ];
+  const progressKeys = Object.keys(progress);
+  const extraProgressKeys = progressKeys.filter(k => !expectedProgressKeys.includes(k));
+  const missingProgressKeys = expectedProgressKeys.filter(k => !progressKeys.includes(k));
+  if (extraProgressKeys.length) error(`Unknown keys in progress.json: ${extraProgressKeys.join(', ')}`);
+  if (missingProgressKeys.length) error(`Missing keys in progress.json: ${missingProgressKeys.join(', ')}`);
+
+  if ('packetId' in progress && progress.packetId !== 'WP00') {
     error(`progress.json packetId must be 'WP00', got '${progress.packetId}'`);
   }
-  if (progress.attempt !== 'A4') {
-    error(`progress.json attempt must be 'A4', got '${progress.attempt}'`);
+  if ('attempt' in progress && progress.attempt !== 'A5') {
+    error(`progress.json attempt must be 'A5', got '${progress.attempt}'`);
   }
-  if (progress.externalBaseCommit !== 'c6ba7f7559adcd92c3bca559aa82900d44d42047') {
-    error(`progress.json externalBaseCommit mismatch: expected 'c6ba7f7559adcd92c3bca559aa82900d44d42047', got '${progress.externalBaseCommit}'`);
+  if ('externalBaseCommit' in progress && progress.externalBaseCommit !== '4c0753f4d495bfc03056ec330c554647a8405a4b') {
+    error(`progress.json externalBaseCommit mismatch: expected '4c0753f4d495bfc03056ec330c554647a8405a4b', got '${progress.externalBaseCommit}'`);
   }
-  if (progress.externalBaseCommitVerifiedByAgent !== false) {
+  if ('externalBaseCommitVerifiedByAgent' in progress && progress.externalBaseCommitVerifiedByAgent !== false) {
     error(`progress.json externalBaseCommitVerifiedByAgent must be false`);
   }
-  if (progress.H01 !== 'LOCAL_PASS') {
+  if ('H01' in progress && progress.H01 !== 'LOCAL_PASS') {
     error(`progress.json H01 state must be 'LOCAL_PASS', got '${progress.H01}'`);
   }
-  if (progress.H02 !== 'EXTERNAL_PENDING') {
+  if ('H02' in progress && progress.H02 !== 'EXTERNAL_PENDING') {
     error(`progress.json H02 state must be 'EXTERNAL_PENDING', got '${progress.H02}'`);
   }
 
-  const otherAutoVerifications = ["D01", "D02", "D03", "D04", "D05", "D06", "F01", "F02", "F03", "F04", "X01", "X02", "X03", "X04", "L01"];
-  for (const id of otherAutoVerifications) {
-    if (progress[id] !== 'PLANNED') {
+  const plannedKeys = [
+    "D01", "D02", "D03", "D04", "D05", "D06",
+    "F01", "F02", "F03", "F04",
+    "X01", "X02", "X03", "X04", "L01",
+    "M01", "M02", "M03",
+    "WP00", "WP01", "WP02", "WP03", "WP04", "WP05", "WP06", "WP07"
+  ];
+  for (const id of plannedKeys) {
+    if (id in progress && progress[id] !== 'PLANNED') {
       error(`progress.json ${id} state must be 'PLANNED', got '${progress[id]}'`);
     }
   }
