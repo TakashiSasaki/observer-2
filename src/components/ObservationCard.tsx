@@ -89,7 +89,7 @@ export const ObservationCard: React.FC<ObservationCardProps> = ({
   const [copied, setCopied] = useState(false);
   const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
 
-  const isOwner = currentUserId && observation.userId === currentUserId;
+  const isOwner = Boolean(currentUserId && observation.uid === currentUserId);
   const typeInfo = TYPE_CONFIG[observation.type] || TYPE_CONFIG.manual;
   const visInfo = VISIBILITY_CONFIG[observation.visibility] || VISIBILITY_CONFIG.private;
   const TypeIcon = typeInfo.icon;
@@ -133,11 +133,10 @@ export const ObservationCard: React.FC<ObservationCardProps> = ({
               {typeInfo.label}
             </span>
 
-            {((observation.observations && observation.observations.length > 0) ||
-              ((observation as any).subObservations && (observation as any).subObservations.length > 0)) && (
+            {(observation.observations && observation.observations.length > 0) && (
               <span className="px-2 py-0.5 bg-blue-100 text-blue-900 border border-blue-200 rounded text-[10px] font-extrabold flex items-center gap-1">
                 <span>
-                  観測セット: {(observation.observations?.length || (observation as any).subObservations?.length)}件
+                  観測セット: {observation.observations.length}件
                 </span>
               </span>
             )}
@@ -251,7 +250,25 @@ export const ObservationCard: React.FC<ObservationCardProps> = ({
                     key={vKey}
                     type="button"
                     onClick={() => {
-                      onVisibilityChange(observation.id, vKey);
+                      if (vKey === 'shared') {
+                         if (!observation.allowedEmails || observation.allowedEmails.length === 0) {
+                            const emails = window.prompt("共有を許可するユーザーのメールアドレスをカンマ区切りで入力してください:");
+                            if (!emails || !emails.trim()) {
+                               setShowVisibilityMenu(false);
+                               return;
+                            }
+                            const parsed = emails.split(',').map(e => e.trim()).filter(Boolean);
+                            if (parsed.length === 0) {
+                               setShowVisibilityMenu(false);
+                               return;
+                            }
+                            onVisibilityChange(observation.id, vKey, parsed);
+                         } else {
+                            onVisibilityChange(observation.id, vKey, observation.allowedEmails);
+                         }
+                      } else {
+                         onVisibilityChange(observation.id, vKey);
+                      }
                       setShowVisibilityMenu(false);
                     }}
                     className={`w-full px-2 py-1.5 rounded text-left text-xs font-medium flex items-center justify-between hover:bg-slate-50 transition cursor-pointer ${

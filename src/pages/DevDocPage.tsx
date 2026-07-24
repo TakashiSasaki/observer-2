@@ -308,29 +308,27 @@ service cloud.firestore {
              (!('sign_in_provider' in request.auth.token.firebase) || request.auth.token.firebase.sign_in_provider != 'anonymous');
     }
     function isDocOwner() {
-      return isAuthenticated() && 
-        ((resource.data.keys().hasAll(['uid']) && resource.data.uid == request.auth.uid) ||
-         (resource.data.keys().hasAll(['userId']) && resource.data.userId == request.auth.uid));
+      return isAuthenticated() && resource.data.uid == request.auth.uid;
     }
     function isEmailAllowed() {
       return isNonAnonymous() && resource.data.keys().hasAll(['allowedEmails']) && request.auth.token.email in resource.data.allowedEmails;
     }
 
     match /singleObservations/{obsId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAuthenticated() && 
-        ((request.resource.data.keys().hasAll(['uid']) && request.resource.data.uid == request.auth.uid) ||
-         (request.resource.data.keys().hasAll(['userId']) && request.resource.data.userId == request.auth.uid));
+      allow read: if resource.data.visibility == 'public' ||
+                     (resource.data.visibility == 'authenticated' && isAuthenticated()) ||
+                     (resource.data.visibility == 'shared' && isEmailAllowed()) ||
+                     isDocOwner();
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isDocOwner() && request.resource.data.uid == resource.data.uid;
     }
 
     match /observations/{obsSetId} {
       allow read: if resource.data.visibility == 'public' ||
                      (resource.data.visibility == 'authenticated' && isAuthenticated()) ||
                      (resource.data.visibility == 'shared' && isEmailAllowed()) || isDocOwner();
-      allow create: if isAuthenticated() && 
-        ((request.resource.data.keys().hasAll(['uid']) && request.resource.data.uid == request.auth.uid) ||
-         (request.resource.data.keys().hasAll(['userId']) && request.resource.data.userId == request.auth.uid));
-      allow update, delete: if isDocOwner();
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isDocOwner() && request.resource.data.uid == resource.data.uid;
     }
   }
 }`}

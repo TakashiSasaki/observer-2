@@ -99,6 +99,7 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({
 
     const newObsItem: Observation = {
       id: generateId(),
+      parentSetId: '', // Dummy value, overwritten by ObservationSetModel
       uid: currentUser.uid,
       observerName: currentUser.displayName,
       observerPhoto: currentUser.photoURL,

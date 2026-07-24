@@ -44,7 +44,7 @@
         "schemaVersion": { "type": "string", "description": "Schema version, defaults to 1.0.0" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["id", "uid", "type", "title", "createdAt", "schemaVersion"]
+      "required": ["id", "parentSetId", "uid", "type", "title", "summary", "rawContent", "visibility", "createdAt", "schemaVersion"]
     },
     "observations": {
       "title": "Observation Set",
@@ -52,7 +52,6 @@
       "type": "object",
       "properties": {
         "uid": { "type": "string" },
-        "userId": { "type": "string", "description": "Legacy field for user ID compatibility" },
         "observerName": { "type": "string" },
         "observerPhoto": { "type": "string" },
         "type": { "type": "string", "enum": ["nfc", "qr", "object", "ocr", "manual"] },
@@ -79,11 +78,11 @@
         "schemaVersion": { "type": "string", "description": "Schema version, defaults to 1.0.0" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["uid", "type", "title", "visibility", "createdAt", "schemaVersion"]
+      "required": ["uid", "type", "title", "summary", "rawContent", "visibility", "tags", "observationIds", "observations", "createdAt", "schemaVersion"]
     }
   },
   "firestore": {
-    "/users/{userId}": {
+    "/users/{uid}": {
       "schema": { "$ref": "#/entities/users" },
       "description": "User profile collection"
     },

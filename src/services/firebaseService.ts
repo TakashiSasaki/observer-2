@@ -16,7 +16,7 @@ import {
 import { signInWithPopup, signInAnonymously, signOut, User } from 'firebase/auth';
 import { db, auth, googleProvider } from '../firebase';
 import { ObservationSet, VisibilityType, ObserverUser } from '../types';
-import { ObservationSetModel } from '../models/ObservationModel';
+import { ObservationSetModel } from '../models/ObservationSetModel';
 import { processImageToWebP } from '../utils/imageUtils';
 
 const COLLECTION_NAME = 'observations';
@@ -107,7 +107,6 @@ export async function createObservation(obsData: Omit<ObservationSet, 'id'> & { 
             ...singleObs,
             parentSetId: model.id,
             uid: model.uid,
-            userId: model.uid,
             visibility: childVis,
             allowedEmails: childAllowed,
             schemaVersion: singleObs.schemaVersion || '1.0.0',
@@ -202,7 +201,7 @@ export async function fetchObservations(
   // Fallback filtering from local cache
   return localList.filter((item) => {
     if (filterMode === 'mine') {
-      return currentUserUid ? (item.uid === currentUserUid || (item as any).userId === currentUserUid) : true;
+      return currentUserUid ? item.uid === currentUserUid : true;
     } else if (filterMode === 'authenticated') {
       return item.visibility === 'authenticated';
     } else if (filterMode === 'shared') {
@@ -227,20 +226,18 @@ export async function updateObservationVisibility(
   if (auth.currentUser) {
     let targetChildIds = observationIds;
     if (!targetChildIds) {
-      try {
-        const parentSnap = await getDoc(doc(db, COLLECTION_NAME, id));
-        if (parentSnap.exists()) {
-          const pData = parentSnap.data();
-          if (Array.isArray(pData.observationIds)) {
-            targetChildIds = pData.observationIds;
-          }
-        }
-      } catch (err) {
-        console.warn('Could not fetch parent doc for child observation IDs:', err);
+      const parentSnap = await getDoc(doc(db, COLLECTION_NAME, id));
+      if (!parentSnap.exists()) {
+        throw new Error('Parent document not found');
       }
+      const pData = parentSnap.data();
+      if (!Array.isArray(pData.observationIds)) {
+        throw new Error('observationIds is missing in canonical data');
+      }
+      targetChildIds = pData.observationIds;
     }
 
-    const childIds = targetChildIds || [];
+    const childIds = targetChildIds;
     if (childIds.length + 1 > 500) {
       throw new Error('更新対象の観測件数がバッチ書き込み上限（500件）を超えています。');
     }
@@ -292,20 +289,18 @@ export async function deleteObservation(
   if (auth.currentUser) {
     let targetChildIds = observationIds;
     if (!targetChildIds) {
-      try {
-        const parentSnap = await getDoc(doc(db, COLLECTION_NAME, id));
-        if (parentSnap.exists()) {
-          const pData = parentSnap.data();
-          if (Array.isArray(pData.observationIds)) {
-            targetChildIds = pData.observationIds;
-          }
-        }
-      } catch (err) {
-        console.warn('Could not fetch parent doc for deletion:', err);
+      const parentSnap = await getDoc(doc(db, COLLECTION_NAME, id));
+      if (!parentSnap.exists()) {
+        throw new Error('Parent document not found');
       }
+      const pData = parentSnap.data();
+      if (!Array.isArray(pData.observationIds)) {
+        throw new Error('observationIds is missing in canonical data');
+      }
+      targetChildIds = pData.observationIds;
     }
 
-    const childIds = targetChildIds || [];
+    const childIds = targetChildIds;
     if (childIds.length + 1 > 500) {
       throw new Error('削除対象の観測件数がバッチ書き込み上限（500件）を超えています。');
     }

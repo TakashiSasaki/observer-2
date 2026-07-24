@@ -36,9 +36,9 @@ export const ObservationDetailModal: React.FC<ObservationDetailModalProps> = ({
 
   if (!observation) return null;
 
-  const obsItems = observation.observations || (observation as any).subObservations || [];
+  const obsItems = observation.observations || [];
 
-  const isOwner = currentUserId && observation.userId === currentUserId;
+  const isOwner = currentUserId && observation.uid === currentUserId;
 
   const formatDate = (isoStr: string) => {
     try {
@@ -270,7 +270,25 @@ export const ObservationDetailModal: React.FC<ObservationDetailModalProps> = ({
                   <button
                     key={key}
                     type="button"
-                    onClick={() => onVisibilityChange(observation.id, key as VisibilityType)}
+                    onClick={() => {
+                      if (key === 'shared') {
+                         if (!observation.allowedEmails || observation.allowedEmails.length === 0) {
+                            const emails = window.prompt("共有を許可するユーザーのメールアドレスをカンマ区切りで入力してください:");
+                            if (!emails || !emails.trim()) {
+                               return;
+                            }
+                            const parsed = emails.split(',').map(e => e.trim()).filter(Boolean);
+                            if (parsed.length === 0) {
+                               return;
+                            }
+                            onVisibilityChange(observation.id, key as VisibilityType, parsed);
+                         } else {
+                            onVisibilityChange(observation.id, key as VisibilityType, observation.allowedEmails);
+                         }
+                      } else {
+                         onVisibilityChange(observation.id, key as VisibilityType);
+                      }
+                    }}
                     className={`py-1.5 px-2 rounded text-[11px] font-bold border flex items-center justify-center gap-1 transition cursor-pointer ${
                       observation.visibility === key
                         ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'

@@ -29,8 +29,9 @@ export class ObservationSetModel implements ObservationSet {
 
   constructor(initData: Partial<ObservationSet> & { type: ObservationType; title: string }) {
     this.id = initData.id || generateId();
-    this.uid = initData.uid || (initData as any).userId || 'anonymous';
-    this.observerName = initData.observerName || '観測者';
+    if (!initData.uid) throw new Error('uid is required');
+    this.uid = initData.uid;
+    this.observerName = initData.observerName;
     this.observerPhoto = initData.observerPhoto;
     this.type = initData.type;
     this.title = initData.title || '無題の観測セット';
@@ -45,23 +46,23 @@ export class ObservationSetModel implements ObservationSet {
     this.metadata = initData.metadata || {};
     this.schemaVersion = initData.schemaVersion || '1.0.0';
     
-    // Support legacy subObservations field or new observations field
-    const rawObsList: any[] = initData.observations || (initData as any).subObservations || [];
-    this.observations = rawObsList.map((o: any) => {
+    const rawObsList: Observation[] = initData.observations || [];
+    this.observations = rawObsList.map((o) => {
       const obsId = o.id || generateId();
+      if (!o.uid) throw new Error('Observation uid is required');
       return {
         id: obsId,
         parentSetId: o.parentSetId || this.id,
-        uid: o.uid || this.uid,
-        observerName: o.observerName || this.observerName,
-        observerPhoto: o.observerPhoto || this.observerPhoto,
+        uid: o.uid,
+        observerName: o.observerName,
+        observerPhoto: o.observerPhoto,
         type: o.type || this.type,
         title: o.title || '',
         summary: o.summary || '',
         rawContent: o.rawContent || '',
-        imageUrl: o.imageUrl || undefined,
-        imagePath: o.imagePath || undefined,
-        location: o.location || undefined,
+        imageUrl: o.imageUrl,
+        imagePath: o.imagePath,
+        location: o.location,
         visibility: o.visibility || this.visibility,
         allowedEmails: Array.isArray(o.allowedEmails) ? o.allowedEmails : (this.allowedEmails || []),
         metadata: o.metadata || {},
@@ -165,7 +166,6 @@ export class ObservationSetModel implements ObservationSet {
   public toFirestoreData(): Record<string, any> {
     return {
       uid: this.uid,
-      userId: this.uid, // 既存データとの互換性用
       observerName: this.observerName,
       observerPhoto: this.observerPhoto || null,
       type: this.type,
@@ -197,31 +197,32 @@ export class ObservationSetModel implements ObservationSet {
       createdAtIso = data.createdAt;
     }
 
-    const rawObsArray = Array.isArray(data.observations)
-      ? data.observations
-      : Array.isArray(data.subObservations)
-      ? data.subObservations
-      : [];
+    const rawObsArray: any[] = Array.isArray(data.observations) ? data.observations : [];
 
-    const parentSetUid = data.uid || data.userId || 'unknown';
-    const parentSetVisibility = data.visibility || 'private';
+    const parentSetUid = data.uid;
+    if (!parentSetUid) throw new Error('Document missing uid');
+    
+    const parentSetVisibility = data.visibility;
+    if (!parentSetVisibility) throw new Error('Document missing visibility');
+
     const parentSetAllowedEmails = Array.isArray(data.allowedEmails) ? data.allowedEmails : [];
 
     const mappedObservations: Observation[] = rawObsArray.map((o: any) => {
       const obsId = o.id || generateId();
+      if (!o.uid) throw new Error('Observation missing uid');
       return {
         id: obsId,
         parentSetId: o.parentSetId || id,
-        uid: o.uid || parentSetUid,
-        observerName: o.observerName || data.observerName || '観測者',
-        observerPhoto: o.observerPhoto || data.observerPhoto,
+        uid: o.uid,
+        observerName: o.observerName,
+        observerPhoto: o.observerPhoto,
         type: o.type || data.type || 'manual',
         title: o.title || '',
         summary: o.summary || '',
         rawContent: o.rawContent || '',
-        imageUrl: o.imageUrl || undefined,
-        imagePath: o.imagePath || undefined,
-        location: o.location || undefined,
+        imageUrl: o.imageUrl,
+        imagePath: o.imagePath,
+        location: o.location,
         visibility: o.visibility || parentSetVisibility,
         allowedEmails: Array.isArray(o.allowedEmails) ? o.allowedEmails : parentSetAllowedEmails,
         metadata: o.metadata || {},
@@ -230,22 +231,23 @@ export class ObservationSetModel implements ObservationSet {
       };
     });
 
-    const obsIds = Array.isArray(data.observationIds) && data.observationIds.length > 0
-      ? data.observationIds
-      : mappedObservations.map((o) => o.id);
+    const obsIds = Array.isArray(data.observationIds) ? data.observationIds : mappedObservations.map((o) => o.id);
+    if (!Array.isArray(data.observationIds)) {
+       throw new Error('observationIds is required in new format');
+    }
 
     return new ObservationSetModel({
       id,
       uid: parentSetUid,
-      observerName: data.observerName || '観測者',
-      observerPhoto: data.observerPhoto || undefined,
+      observerName: data.observerName,
+      observerPhoto: data.observerPhoto,
       type: data.type || 'manual',
       title: data.title || '無題の観測セット',
       summary: data.summary || '',
       rawContent: data.rawContent || '',
-      imageUrl: data.imageUrl || undefined,
-      imagePath: data.imagePath || undefined,
-      location: data.location || undefined,
+      imageUrl: data.imageUrl,
+      imagePath: data.imagePath,
+      location: data.location,
       visibility: parentSetVisibility,
       allowedEmails: parentSetAllowedEmails,
       tags: Array.isArray(data.tags) ? data.tags : [],
@@ -320,5 +322,3 @@ export class ObservationSetModel implements ObservationSet {
   }
 }
 
-// Alias for backwards compatibility if needed
-export const ObservationModel = ObservationSetModel;

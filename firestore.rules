@@ -14,9 +14,7 @@ service cloud.firestore {
     }
 
     function isDocOwner() {
-      return isAuthenticated() && 
-        ((resource.data.keys().hasAll(['uid']) && resource.data.uid == request.auth.uid) ||
-         (resource.data.keys().hasAll(['userId']) && resource.data.userId == request.auth.uid));
+      return isAuthenticated() && resource.data.uid == request.auth.uid;
     }
 
     function isEmailAllowed() {
@@ -26,9 +24,9 @@ service cloud.firestore {
     }
 
     // User profiles
-    match /users/{userId} {
+    match /users/{uid} {
       allow read: if isAuthenticated();
-      allow create, update, delete: if isAuthenticated() && request.auth.uid == userId;
+      allow create, update, delete: if isAuthenticated() && request.auth.uid == uid;
     }
 
     // Single Observations Collection (個別の独立観測データ: 複数の観測セットから参照可能)
@@ -38,32 +36,23 @@ service cloud.firestore {
                      (resource.data.visibility == 'shared' && isEmailAllowed()) ||
                      isDocOwner();
 
-      allow create: if isAuthenticated() && 
-        ((request.resource.data.keys().hasAll(['uid']) && request.resource.data.uid == request.auth.uid) ||
-         (request.resource.data.keys().hasAll(['userId']) && request.resource.data.userId == request.auth.uid));
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
 
-      allow update, delete: if isDocOwner();
+      allow update, delete: if isDocOwner() && request.resource.data.uid == resource.data.uid;
     }
 
     // Observation Sets Collection (観測セットデータ: observationIds 配列で複数観測を参照可能)
     match /observations/{obsSetId} {
-      // READ Rules:
-      // 1. public: 認証なしで開示可能
-      // 2. authenticated: 認証済みユーザーなら誰でも開示可能
-      // 3. shared: 特定のメールアドレスの認証済み（非匿名）ユーザーに開示可能
-      // 4. private / その他: 自分のみ (isDocOwner)
       allow read: if resource.data.visibility == 'public' ||
                      (resource.data.visibility == 'authenticated' && isAuthenticated()) ||
                      (resource.data.visibility == 'shared' && isEmailAllowed()) ||
                      isDocOwner();
 
       // CREATE: Authenticated user creating document with their own UID
-      allow create: if isAuthenticated() && 
-        ((request.resource.data.keys().hasAll(['uid']) && request.resource.data.uid == request.auth.uid) ||
-         (request.resource.data.keys().hasAll(['userId']) && request.resource.data.userId == request.auth.uid));
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
 
-      // UPDATE & DELETE: Document owner only
-      allow update, delete: if isDocOwner();
+      // UPDATE & DELETE: Document owner only, cannot change owner
+      allow update, delete: if isDocOwner() && request.resource.data.uid == resource.data.uid;
     }
   }
 }

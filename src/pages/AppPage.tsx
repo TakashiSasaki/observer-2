@@ -62,7 +62,6 @@ export default function AppPage() {
           console.warn('Anonymous sign-in fallback:', err);
           const guestId = `guest_${Math.random().toString(36).substring(2, 9)}`;
           setCurrentUser({
-            userId: guestId,
             uid: guestId,
             displayName: 'ゲスト観測者',
             isAnonymous: true,
@@ -117,7 +116,6 @@ export default function AppPage() {
     tags: string[];
     metadata?: Record<string, any>;
     observations?: Observation[];
-    subObservations?: any[];
   }) => {
     if (!currentUser) return;
 
@@ -136,7 +134,8 @@ export default function AppPage() {
       allowedEmails: data.visibility === 'shared' ? (data.allowedEmails || []) : [],
       tags: data.tags,
       metadata: data.metadata,
-      observations: data.observations || data.subObservations || [],
+      observationIds: data.observations ? data.observations.map((o) => o.id) : [],
+      observations: data.observations || [],
       schemaVersion: '1.0.0',
       createdAt: new Date().toISOString(),
     });
