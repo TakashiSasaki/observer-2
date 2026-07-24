@@ -276,10 +276,10 @@ test('packetId、attempt、externalBaseCommit、externalBaseCommitVerifiedByAgen
   });
   res = runVerify(tmp);
   assert.strictEqual(res.success, false);
-  assert.match(res.output, /attempt must be 'A6'/);
+  assert.match(res.output, /attempt must be 'A7'/);
 
   updateFile(tmp, 'progress.json', d => {
-    d['attempt'] = 'A6';
+    d['attempt'] = 'A7';
     d['externalBaseCommit'] = 'badcommit';
   });
   res = runVerify(tmp);
@@ -287,7 +287,7 @@ test('packetId、attempt、externalBaseCommit、externalBaseCommitVerifiedByAgen
   assert.match(res.output, /externalBaseCommit mismatch/);
 
   updateFile(tmp, 'progress.json', d => {
-    d['externalBaseCommit'] = 'ab1431144e2eb2b671cdd3b16f6c994d8a409e76';
+    d['externalBaseCommit'] = '314dfe745a997a42311934c5dc671b7d330c9413';
     d['externalBaseCommitVerifiedByAgent'] = true;
   });
   res = runVerify(tmp);
