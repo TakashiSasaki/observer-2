@@ -1,7 +1,7 @@
 {
   "packetId": "WP00",
-  "attempt": "A1",
-  "externalBaseCommit": "2b01e6c94b8f91eb86a4789c53fb5223953277ea",
+  "attempt": "A2",
+  "externalBaseCommit": "7a89fedf79039254a4844772b066fe1159e7268c",
   "externalBaseCommitVerifiedByAgent": false,
   "H01": "LOCAL_PASS",
   "H02": "EXTERNAL_PENDING",

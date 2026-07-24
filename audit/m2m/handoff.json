@@ -1,26 +1,22 @@
 {
   "packetId": "WP00",
-  "attempt": "A1",
+  "attempt": "A2",
   "changedFiles": [
-    "audit/m2m/requirements.json",
-    "audit/m2m/verification-catalog.json",
-    "audit/m2m/manual-checks.json",
-    "audit/m2m/work-packages.json",
-    "audit/m2m/decisions.json",
-    "audit/m2m/registry-lock.json",
-    "audit/m2m/progress.json",
-    "audit/m2m/handoff.json",
+    "setup-jsons.js (deleted)",
     "scripts/verify-m2m-harness.mjs",
     "tests/m2m/harness.test.mjs",
-    "package.json",
-    ".github/workflows/m2m-baseline.yml"
+    "audit/m2m/progress.json",
+    "audit/m2m/handoff.json",
+    "audit/m2m/registry-lock.json"
   ],
   "executionCommands": [
     "node --version",
     "node scripts/verify-m2m-harness.mjs",
     "node --test tests/m2m/harness.test.mjs",
     "npm run lint",
-    "npm run build"
+    "npm run build",
+    "git diff --check",
+    "git status --short"
   ],
   "exitCodes": {
     "node scripts/verify-m2m-harness.mjs": 0,
@@ -30,7 +26,8 @@
   },
   "localState": "LOCAL_PASS",
   "externalRequiredVerifications": [
-    "H02"
+    "H02",
+    "Verify diff, Actions, H01/H02, and permitted scope"
   ],
   "constraints": {
     "noNewDependencies": true,
@@ -41,5 +38,9 @@
     "GitHub",
     "GitHub Actions",
     "Firebase Emulator"
-  ]
+  ],
+  "pendingDecisions": {
+    "v1FirestoreDataPolicy": "pending-user-decision",
+    "lockfileAdoption": "pending-decision"
+  }
 }

@@ -25,7 +25,7 @@ const setupTemp = () => {
 
 const runVerify = (cwd) => {
   try {
-    execSync(`node "${VERIFY_SCRIPT}"`, { cwd, stdio: 'pipe' });
+    execSync(`node "${VERIFY_SCRIPT}" --root "${cwd}"`, { cwd, stdio: 'pipe' });
     return { success: true, output: '' };
   } catch (err) {
     return { success: false, output: err.stderr.toString() };
@@ -37,6 +37,11 @@ const updateFile = (tmpDir, file, mutator) => {
   const data = JSON.parse(fs.readFileSync(p, 'utf-8'));
   mutator(data);
   fs.writeFileSync(p, JSON.stringify(data, null, 2));
+};
+
+const writeRawFile = (tmpDir, file, rawString) => {
+  const p = path.join(tmpDir, 'audit/m2m', file);
+  fs.writeFileSync(p, rawString);
 };
 
 const rehash = (tmpDir) => {
@@ -55,7 +60,7 @@ test('正しいレジストリを受理する', () => {
   assert.strictEqual(res.success, true, res.output);
 });
 
-test('要件の欠落を拒否する', () => {
+test('R01〜R12のいずれかの欠落を拒否する', () => {
   const tmp = setupTemp();
   updateFile(tmp, 'requirements.json', d => { delete d['R12']; });
   rehash(tmp);
@@ -73,19 +78,30 @@ test('未知の検証ID追加を拒否する', () => {
   assert.match(res.output, /Unknown IDs in verification-catalog: H99/);
 });
 
-test('ID重複を拒否する (JSON syntax handles it, but replacing expected with unknown tests it)', () => {
+test('実際の重複キーを拒否する', () => {
+  const tmp = setupTemp();
+  const raw = fs.readFileSync(path.join(tmp, 'audit/m2m/verification-catalog.json'), 'utf-8');
+  // Inject duplicate H01 at the very end
+  const duplicateRaw = raw.replace(/}\s*$/, ',\n  "H01": { "executionPlane": "ai-local", "requirementIds": [] }\n}');
+  writeRawFile(tmp, 'verification-catalog.json', duplicateRaw);
+  rehash(tmp);
+  const res = runVerify(tmp);
+  assert.strictEqual(res.success, false);
+  assert.match(res.output, /Duplicate key in verification-catalog\.json: H01/);
+});
+
+test('未知要件参照を拒否する', () => {
   const tmp = setupTemp();
   updateFile(tmp, 'verification-catalog.json', d => {
-    delete d['H01'];
-    d['H01_DUP'] = { executionPlane: 'ai-local', requirementIds: [] };
+    d['F02'].requirementIds.push('R99');
   });
   rehash(tmp);
   const res = runVerify(tmp);
   assert.strictEqual(res.success, false);
-  assert.match(res.output, /Missing IDs in verification-catalog: H01/);
+  assert.match(res.output, /Unknown requirement ID referenced in F02: R99/);
 });
 
-test('requirement参照切れを拒否する', () => {
+test('参照切れまたは非メタ検証・手動確認によるカバレッジ不足を拒否する', () => {
   const tmp = setupTemp();
   updateFile(tmp, 'verification-catalog.json', d => {
     d['X04'].requirementIds = [];
@@ -97,7 +113,20 @@ test('requirement参照切れを拒否する', () => {
   assert.match(res.output, /Requirement R12 is not covered/);
 });
 
-test('hash不一致を拒否する', () => {
+test('H01またはH02だけがある要件を参照しても、カバー済みと扱わない', () => {
+  const tmp = setupTemp();
+  updateFile(tmp, 'verification-catalog.json', d => {
+    d['X04'].requirementIds = [];
+    d['L01'].requirementIds = ["R01"]; // removed R12
+    d['H01'].requirementIds = ["R12"]; // Only covered by H01 now
+  });
+  rehash(tmp);
+  const res = runVerify(tmp);
+  assert.strictEqual(res.success, false);
+  assert.match(res.output, /Requirement R12 is not covered/);
+});
+
+test('SHA-256不一致を拒否する', () => {
   const tmp = setupTemp();
   updateFile(tmp, 'requirements.json', d => { d['R12'] = "Changed text"; });
   // Intentionally not rehashing
@@ -106,9 +135,22 @@ test('hash不一致を拒否する', () => {
   assert.match(res.output, /Registry lock hash mismatch/);
 });
 
-test('AI Studioによる外部PASSの偽装を拒否する', () => {
+test('H02をEXTERNAL_PENDING以外の任意の状態にした場合も拒否する', () => {
   const tmp = setupTemp();
   updateFile(tmp, 'progress.json', d => { d['H02'] = 'EXTERNAL_PASS'; });
+  let res = runVerify(tmp);
+  assert.strictEqual(res.success, false);
+  assert.match(res.output, /H02 state must be EXTERNAL_PENDING/);
+  
+  updateFile(tmp, 'progress.json', d => { d['H02'] = 'LOCAL_PASS'; });
+  res = runVerify(tmp);
+  assert.strictEqual(res.success, false);
+  assert.match(res.output, /H02 state must be EXTERNAL_PENDING/);
+});
+
+test('H02以外の外部検証をAI Studioが完了扱いにする偽装を拒否する', () => {
+  const tmp = setupTemp();
+  updateFile(tmp, 'progress.json', d => { d['F01'] = 'EXTERNAL_PASS'; });
   const res = runVerify(tmp);
   assert.strictEqual(res.success, false);
   assert.match(res.output, /AI Studio cannot set EXTERNAL_PASS/);
