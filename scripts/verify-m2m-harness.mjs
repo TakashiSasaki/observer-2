@@ -18,51 +18,159 @@ const error = (msg) => {
 const getRaw = (file) => {
   try {
     return fs.readFileSync(path.join(rootDir, file), 'utf-8');
-  } catch(e) {
+  } catch (e) {
     error(`Missing file: ${file}`);
     return null;
   }
 };
 
-const findDuplicateTopLevelKeys = (jsonString) => {
-  let level = 0;
-  let inString = false;
-  let escape = false;
-  let currentKey = null;
-  let keys = new Set();
-  
-  for (let i = 0; i < jsonString.length; i++) {
-      const char = jsonString[i];
-      if (inString) {
-          if (escape) { escape = false; }
-          else if (char === '\\') { escape = true; }
-          else if (char === '"') { inString = false; }
-          else if (level === 1 && currentKey !== null) { currentKey += char; }
+function findDuplicateKeysInJson(jsonString) {
+  let pos = 0;
+  const duplicates = [];
+
+  function skipWhitespace() {
+    while (pos < jsonString.length) {
+      const ch = jsonString[pos];
+      if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
+        pos++;
       } else {
-          if (char === '{' || char === '[') {
-              level++;
-          } else if (char === '}' || char === ']') {
-              level--;
-          } else if (char === '"') {
-              inString = true;
-              if (level === 1) { currentKey = ''; }
-          } else if (char === ':' && level === 1 && currentKey !== null) {
-              if (keys.has(currentKey)) return currentKey;
-              keys.add(currentKey);
-              currentKey = null;
-          } else if (char === ',' && level === 1) {
-              currentKey = null;
-          }
+        break;
       }
+    }
   }
-  return null;
-};
+
+  function parseString() {
+    const start = pos;
+    pos++; // skip opening quote '"'
+    while (pos < jsonString.length) {
+      const ch = jsonString[pos];
+      if (ch === '\\') {
+        pos += 2; // skip escape character and next char
+      } else if (ch === '"') {
+        pos++; // skip closing quote
+        const rawStrToken = jsonString.slice(start, pos);
+        return JSON.parse(rawStrToken);
+      } else {
+        pos++;
+      }
+    }
+    throw new SyntaxError('Unterminated string in JSON');
+  }
+
+  function parseValue(pathStr = 'root') {
+    skipWhitespace();
+    if (pos >= jsonString.length) {
+      throw new SyntaxError('Unexpected end of JSON input');
+    }
+    const ch = jsonString[pos];
+    if (ch === '{') {
+      parseObject(pathStr);
+    } else if (ch === '[') {
+      parseArray(pathStr);
+    } else if (ch === '"') {
+      parseString();
+    } else if (ch === 't' || ch === 'f' || ch === 'n' || ch === '-' || (ch >= '0' && ch <= '9')) {
+      parsePrimitive();
+    } else {
+      throw new SyntaxError(`Unexpected character '${ch}' at position ${pos}`);
+    }
+  }
+
+  function parsePrimitive() {
+    const start = pos;
+    while (pos < jsonString.length) {
+      const ch = jsonString[pos];
+      if (' \t\n\r,}]'.includes(ch)) {
+        break;
+      }
+      pos++;
+    }
+    const raw = jsonString.slice(start, pos);
+    if (raw !== 'true' && raw !== 'false' && raw !== 'null' && isNaN(Number(raw))) {
+      throw new SyntaxError(`Invalid literal '${raw}' at position ${start}`);
+    }
+  }
+
+  function parseArray(pathStr) {
+    pos++; // skip '['
+    skipWhitespace();
+    if (jsonString[pos] === ']') {
+      pos++;
+      return;
+    }
+    let index = 0;
+    while (pos < jsonString.length) {
+      parseValue(`${pathStr}[${index}]`);
+      skipWhitespace();
+      if (jsonString[pos] === ',') {
+        pos++;
+        index++;
+      } else if (jsonString[pos] === ']') {
+        pos++;
+        break;
+      } else {
+        throw new SyntaxError(`Expected ',' or ']' in array at position ${pos}`);
+      }
+    }
+  }
+
+  function parseObject(pathStr) {
+    pos++; // skip '{'
+    skipWhitespace();
+    if (jsonString[pos] === '}') {
+      pos++;
+      return;
+    }
+    const keysSeen = new Set();
+    while (pos < jsonString.length) {
+      skipWhitespace();
+      if (jsonString[pos] !== '"') {
+        throw new SyntaxError(`Expected string key in object at position ${pos}`);
+      }
+      const key = parseString();
+      if (keysSeen.has(key)) {
+        duplicates.push({ path: pathStr, key });
+      } else {
+        keysSeen.add(key);
+      }
+      skipWhitespace();
+      if (jsonString[pos] !== ':') {
+        throw new SyntaxError(`Expected ':' after key '${key}' in object at position ${pos}`);
+      }
+      pos++; // skip ':'
+      parseValue(`${pathStr}.${key}`);
+      skipWhitespace();
+      if (jsonString[pos] === ',') {
+        pos++;
+      } else if (jsonString[pos] === '}') {
+        pos++;
+        break;
+      } else {
+        throw new SyntaxError(`Expected ',' or '}' in object at position ${pos}`);
+      }
+    }
+  }
+
+  try {
+    parseValue();
+  } catch (err) {
+    return { syntaxError: err.message, duplicates };
+  }
+
+  return { syntaxError: null, duplicates };
+}
 
 const parseJsonSafe = (raw, name) => {
   if (!raw) return null;
-  const dup = findDuplicateTopLevelKeys(raw);
-  if (dup) {
-    error(`Duplicate key in ${name}: ${dup}`);
+  const res = findDuplicateKeysInJson(raw);
+  if (res.syntaxError) {
+    error(`Syntax error in ${name}: ${res.syntaxError}`);
+    return null;
+  }
+  if (res.duplicates.length > 0) {
+    res.duplicates.forEach(d => {
+      error(`Duplicate key in ${name} at ${d.path}: '${d.key}'`);
+    });
   }
   try {
     return JSON.parse(raw);
@@ -91,15 +199,27 @@ if (!reqs || !catalog || !manual || !wps || !progress || !lock) {
 }
 
 const expectedReqs = ["R01", "R02", "R03", "R04", "R05", "R06", "R07", "R08", "R09", "R10", "R11", "R12"];
-const expectedCatalog = ["H01", "H02", "D01", "D02", "D03", "D04", "D05", "D06", "F01", "F02", "F03", "F04", "X01", "X02", "X03", "X04", "L01"];
 const expectedManual = ["M01", "M02", "M03"];
 const expectedWps = ["WP00", "WP01", "WP02", "WP03", "WP04", "WP05", "WP06", "WP07"];
-const expectedExecutionPlanes = {
-  H01: "ai-local", H02: "external",
-  D01: "ai-local", D02: "ai-local", D03: "ai-local", D04: "ai-local", D05: "ai-local", D06: "ai-local",
-  F01: "external", F02: "ai-local", F03: "ai-local", F04: "external",
-  X01: "ai-local", X02: "ai-local", X03: "ai-local", X04: "ai-local",
-  L01: "ai-local"
+
+const expectedCatalogSpecs = {
+  "H01": { executionPlane: "ai-local", requirementIds: [] },
+  "H02": { executionPlane: "external", requirementIds: [] },
+  "D01": { executionPlane: "ai-local", requirementIds: ["R01", "R03"] },
+  "D02": { executionPlane: "ai-local", requirementIds: ["R02"] },
+  "D03": { executionPlane: "ai-local", requirementIds: ["R04"] },
+  "D04": { executionPlane: "ai-local", requirementIds: ["R05"] },
+  "D05": { executionPlane: "ai-local", requirementIds: ["R06"] },
+  "D06": { executionPlane: "ai-local", requirementIds: ["R07"] },
+  "F01": { executionPlane: "external", requirementIds: ["R08"] },
+  "F02": { executionPlane: "ai-local", requirementIds: ["R10"] },
+  "F03": { executionPlane: "ai-local", requirementIds: ["R07", "R09"] },
+  "F04": { executionPlane: "external", requirementIds: ["R08", "R09"] },
+  "X01": { executionPlane: "ai-local", requirementIds: ["R11"] },
+  "X02": { executionPlane: "ai-local", requirementIds: ["R11"] },
+  "X03": { executionPlane: "ai-local", requirementIds: ["R03", "R11"] },
+  "X04": { executionPlane: "ai-local", requirementIds: ["R12"] },
+  "L01": { executionPlane: "ai-local", requirementIds: ["R01", "R12"] }
 };
 
 const checkKeys = (obj, expected, name) => {
@@ -110,36 +230,52 @@ const checkKeys = (obj, expected, name) => {
   if (missing.length) error(`Missing IDs in ${name}: ${missing.join(', ')}`);
 };
 
-checkKeys(reqs, expectedReqs, 'requirements');
-checkKeys(catalog, expectedCatalog, 'verification-catalog');
-checkKeys(manual, expectedManual, 'manual-checks');
-checkKeys(wps, expectedWps, 'work-packages');
+checkKeys(reqs, expectedReqs, 'requirements.json');
+checkKeys(manual, expectedManual, 'manual-checks.json');
+checkKeys(wps, expectedWps, 'work-packages.json');
 
-// executionPlane checks and requirementIds subset checks
-for (const [id, entry] of Object.entries(catalog)) {
-  if (expectedExecutionPlanes[id] && entry.executionPlane !== expectedExecutionPlanes[id]) {
-    error(`executionPlane mismatch for ${id}: expected ${expectedExecutionPlanes[id]}, got ${entry.executionPlane}`);
+// Exact catalog mapping checks
+const catalogKeys = Object.keys(catalog);
+const expectedCatalogKeys = Object.keys(expectedCatalogSpecs);
+const extraCatalogKeys = catalogKeys.filter(k => !expectedCatalogKeys.includes(k));
+const missingCatalogKeys = expectedCatalogKeys.filter(k => !catalogKeys.includes(k));
+
+if (extraCatalogKeys.length) error(`Unknown IDs in verification-catalog: ${extraCatalogKeys.join(', ')}`);
+if (missingCatalogKeys.length) error(`Missing IDs in verification-catalog: ${missingCatalogKeys.join(', ')}`);
+
+for (const [id, expectedSpec] of Object.entries(expectedCatalogSpecs)) {
+  const entry = catalog[id];
+  if (!entry) continue;
+
+  if (entry.executionPlane !== expectedSpec.executionPlane) {
+    error(`executionPlane mismatch for ${id}: expected '${expectedSpec.executionPlane}', got '${entry.executionPlane}'`);
   }
-  if (entry.requirementIds) {
-    const unknownReqs = entry.requirementIds.filter(r => !expectedReqs.includes(r));
-    if (unknownReqs.length) {
-      error(`Unknown requirement ID referenced in ${id}: ${unknownReqs.join(', ')}`);
+
+  if (!Array.isArray(entry.requirementIds)) {
+    error(`requirementIds for ${id} must be an array`);
+  } else {
+    const isSameLength = entry.requirementIds.length === expectedSpec.requirementIds.length;
+    const isSameElements = isSameLength && entry.requirementIds.every((r, idx) => r === expectedSpec.requirementIds[idx]);
+    if (!isSameElements) {
+      error(`requirementIds mismatch for ${id}: expected [${expectedSpec.requirementIds.join(', ')}], got [${entry.requirementIds.join(', ')}]`);
     }
   }
 }
 
-// all reqs covered
+// Requirement coverage check excluding H01 and H02
 const coveredReqs = new Set();
-Object.entries(catalog).forEach(([id, c]) => {
-  if (id !== 'H01' && id !== 'H02' && c.requirementIds) {
-    c.requirementIds.forEach(r => coveredReqs.add(r));
+for (const [id, entry] of Object.entries(catalog)) {
+  if (id !== 'H01' && id !== 'H02' && Array.isArray(entry.requirementIds)) {
+    entry.requirementIds.forEach(r => coveredReqs.add(r));
+  }
+}
+expectedReqs.forEach(r => {
+  if (!coveredReqs.has(r)) {
+    error(`Requirement ${r} is not covered by any valid non-meta verification.`);
   }
 });
-expectedReqs.forEach(r => {
-  if (!coveredReqs.has(r)) error(`Requirement ${r} is not covered by any valid verification.`);
-});
 
-// Hash check
+// Registry Hash check
 const hash = crypto.createHash('sha256');
 hash.update(fs.readFileSync(path.join(rootDir, 'audit/m2m/requirements.json')));
 hash.update(fs.readFileSync(path.join(rootDir, 'audit/m2m/verification-catalog.json')));
@@ -150,32 +286,38 @@ if (actualHash !== lock.hash) {
   error(`Registry lock hash mismatch. Expected ${lock.hash}, got ${actualHash}`);
 }
 
-// Progress constraints
-if (progress.externalBaseCommit !== '7a89fedf79039254a4844772b066fe1159e7268c') {
-  error(`externalBaseCommit mismatch`);
+// Progress state constraints
+if (progress.packetId !== 'WP00') {
+  error(`progress.json packetId must be 'WP00', got '${progress.packetId}'`);
+}
+if (progress.attempt !== 'A3') {
+  error(`progress.json attempt must be 'A3', got '${progress.attempt}'`);
+}
+if (progress.externalBaseCommit !== 'ad3de2e99dcc86e23ea4df89ff0038f744fecebf') {
+  error(`progress.json externalBaseCommit mismatch: expected 'ad3de2e99dcc86e23ea4df89ff0038f744fecebf', got '${progress.externalBaseCommit}'`);
 }
 if (progress.externalBaseCommitVerifiedByAgent !== false) {
-  error(`externalBaseCommitVerifiedByAgent must be false`);
+  error(`progress.json externalBaseCommitVerifiedByAgent must be false`);
 }
-if (progress.packetId !== 'WP00') {
-  error(`packetId must be WP00`);
-}
-if (progress.attempt !== 'A2') {
-  error(`attempt must be A2`);
+if (progress.H01 !== 'LOCAL_PASS') {
+  error(`progress.json H01 state must be 'LOCAL_PASS', got '${progress.H01}'`);
 }
 if (progress.H02 !== 'EXTERNAL_PENDING') {
-  error(`H02 state must be EXTERNAL_PENDING`);
+  error(`progress.json H02 state must be 'EXTERNAL_PENDING', got '${progress.H02}'`);
 }
+
+const otherAutoVerifications = ["D01", "D02", "D03", "D04", "D05", "D06", "F01", "F02", "F03", "F04", "X01", "X02", "X03", "X04", "L01"];
+for (const id of otherAutoVerifications) {
+  if (progress[id] !== 'PLANNED') {
+    error(`progress.json ${id} state must be 'PLANNED', got '${progress[id]}'`);
+  }
+}
+
 if (progress.WP00 === 'ACCEPTED') {
-  error(`WP00 cannot be ACCEPTED`);
+  error(`progress.json WP00 state cannot be 'ACCEPTED'`);
 }
 
-// AI Studio spoofing check
-if (progress.F01 === 'EXTERNAL_PASS' || progress.F04 === 'EXTERNAL_PASS') {
-  error('AI Studio cannot set EXTERNAL_PASS for external verifications');
-}
-
-// skip, todo, only in tests/m2m
+// Check test files for .skip, .todo, .only
 const testDir = path.join(rootDir, 'tests/m2m');
 if (fs.existsSync(testDir)) {
   const testFiles = fs.readdirSync(testDir).filter(f => f.endsWith('.test.mjs') || f.endsWith('.test.js'));

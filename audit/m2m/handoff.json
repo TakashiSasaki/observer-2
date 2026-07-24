@@ -1,13 +1,11 @@
 {
   "packetId": "WP00",
-  "attempt": "A2",
+  "attempt": "A3",
   "changedFiles": [
-    "setup-jsons.js (deleted)",
     "scripts/verify-m2m-harness.mjs",
     "tests/m2m/harness.test.mjs",
     "audit/m2m/progress.json",
-    "audit/m2m/handoff.json",
-    "audit/m2m/registry-lock.json"
+    "audit/m2m/handoff.json"
   ],
   "executionCommands": [
     "node --version",
