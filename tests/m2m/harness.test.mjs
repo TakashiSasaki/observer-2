@@ -192,6 +192,14 @@ test('F01、F04、またはその他の未実施自動検証が PLANNED 以外�
   res = runVerify(tmp);
   assert.strictEqual(res.success, false);
   assert.match(res.output, /progress.json F04 state must be 'PLANNED'/);
+
+  updateFile(tmp, 'progress.json', d => {
+    d['F04'] = 'PLANNED';
+    d['D01'] = 'LOCAL_PASS';
+  });
+  res = runVerify(tmp);
+  assert.strictEqual(res.success, false);
+  assert.match(res.output, /progress.json D01 state must be 'PLANNED'/);
 });
 
 test('WP00が ACCEPTED の場合を拒否する', () => {
@@ -213,4 +221,76 @@ test('SHA-256不一致を拒否する', () => {
   const res = runVerify(tmp);
   assert.strictEqual(res.success, false);
   assert.match(res.output, /Registry lock hash mismatch/);
+});
+
+test('requirements.jsonをraw JSON構文エラーにし、progress.jsonのH02をLOCAL_PASSにした場合、両方が報告されること', () => {
+  const tmp = setupTemp();
+  writeRawFile(tmp, 'requirements.json', '{ "R01": "Invalid json", }');
+  updateFile(tmp, 'progress.json', d => {
+    d['H02'] = 'LOCAL_PASS';
+  });
+  rehash(tmp); // Hashing raw invalid JSON so hash check doesn't fail
+  const res = runVerify(tmp);
+  assert.strictEqual(res.success, false);
+  assert.match(res.output, /Syntax error in requirements\.json/);
+  assert.match(res.output, /H02 state must be 'EXTERNAL_PENDING'/);
+});
+
+test('R12をすべての非メタ検証から外し、H01だけにR12を追加した場合、固定対応不一致とカバレッジ診断が出ること', () => {
+  const tmp = setupTemp();
+  updateFile(tmp, 'verification-catalog.json', d => {
+    d['X04'].requirementIds = d['X04'].requirementIds.filter(r => r !== 'R12');
+    d['L01'].requirementIds = d['L01'].requirementIds.filter(r => r !== 'R12');
+    d['H01'].requirementIds.push('R12');
+  });
+  rehash(tmp);
+  const res = runVerify(tmp);
+  assert.strictEqual(res.success, false);
+  assert.match(res.output, /requirementIds mismatch for H01/);
+  assert.match(res.output, /Requirement R12 is not covered by any valid non-meta verification/);
+});
+
+test('H02の requirementIds が空配列でない場合を拒否すること', () => {
+  const tmp = setupTemp();
+  updateFile(tmp, 'verification-catalog.json', d => {
+    d['H02'].requirementIds = ['R01'];
+  });
+  rehash(tmp);
+  const res = runVerify(tmp);
+  assert.strictEqual(res.success, false);
+  assert.match(res.output, /requirementIds mismatch for H02/);
+});
+
+test('packetId、attempt、externalBaseCommit、externalBaseCommitVerifiedByAgent の各不正値を拒否すること', () => {
+  const tmp = setupTemp();
+  updateFile(tmp, 'progress.json', d => {
+    d['packetId'] = 'WP99';
+  });
+  let res = runVerify(tmp);
+  assert.strictEqual(res.success, false);
+  assert.match(res.output, /packetId must be 'WP00'/);
+
+  updateFile(tmp, 'progress.json', d => {
+    d['packetId'] = 'WP00';
+    d['attempt'] = 'A99';
+  });
+  res = runVerify(tmp);
+  assert.strictEqual(res.success, false);
+  assert.match(res.output, /attempt must be 'A4'/);
+
+  updateFile(tmp, 'progress.json', d => {
+    d['attempt'] = 'A4';
+    d['externalBaseCommit'] = 'badcommit';
+  });
+  res = runVerify(tmp);
+  assert.strictEqual(res.success, false);
+  assert.match(res.output, /externalBaseCommit mismatch/);
+
+  updateFile(tmp, 'progress.json', d => {
+    d['externalBaseCommit'] = 'c6ba7f7559adcd92c3bca559aa82900d44d42047';
+    d['externalBaseCommitVerifiedByAgent'] = true;
+  });
+  res = runVerify(tmp);
+  assert.strictEqual(res.success, false);
+  assert.match(res.output, /externalBaseCommitVerifiedByAgent must be false/);
 });

@@ -194,10 +194,6 @@ const wps = parseJsonSafe(rawWps, 'work-packages.json');
 const progress = parseJsonSafe(rawProgress, 'progress.json');
 const lock = parseJsonSafe(rawLock, 'registry-lock.json');
 
-if (!reqs || !catalog || !manual || !wps || !progress || !lock) {
-  process.exit(1);
-}
-
 const expectedReqs = ["R01", "R02", "R03", "R04", "R05", "R06", "R07", "R08", "R09", "R10", "R11", "R12"];
 const expectedManual = ["M01", "M02", "M03"];
 const expectedWps = ["WP00", "WP01", "WP02", "WP03", "WP04", "WP05", "WP06", "WP07"];
@@ -230,91 +226,97 @@ const checkKeys = (obj, expected, name) => {
   if (missing.length) error(`Missing IDs in ${name}: ${missing.join(', ')}`);
 };
 
-checkKeys(reqs, expectedReqs, 'requirements.json');
-checkKeys(manual, expectedManual, 'manual-checks.json');
-checkKeys(wps, expectedWps, 'work-packages.json');
+if (reqs) checkKeys(reqs, expectedReqs, 'requirements.json');
+if (manual) checkKeys(manual, expectedManual, 'manual-checks.json');
+if (wps) checkKeys(wps, expectedWps, 'work-packages.json');
 
 // Exact catalog mapping checks
-const catalogKeys = Object.keys(catalog);
-const expectedCatalogKeys = Object.keys(expectedCatalogSpecs);
-const extraCatalogKeys = catalogKeys.filter(k => !expectedCatalogKeys.includes(k));
-const missingCatalogKeys = expectedCatalogKeys.filter(k => !catalogKeys.includes(k));
+if (catalog) {
+  const catalogKeys = Object.keys(catalog);
+  const expectedCatalogKeys = Object.keys(expectedCatalogSpecs);
+  const extraCatalogKeys = catalogKeys.filter(k => !expectedCatalogKeys.includes(k));
+  const missingCatalogKeys = expectedCatalogKeys.filter(k => !catalogKeys.includes(k));
 
-if (extraCatalogKeys.length) error(`Unknown IDs in verification-catalog: ${extraCatalogKeys.join(', ')}`);
-if (missingCatalogKeys.length) error(`Missing IDs in verification-catalog: ${missingCatalogKeys.join(', ')}`);
+  if (extraCatalogKeys.length) error(`Unknown IDs in verification-catalog: ${extraCatalogKeys.join(', ')}`);
+  if (missingCatalogKeys.length) error(`Missing IDs in verification-catalog: ${missingCatalogKeys.join(', ')}`);
 
-for (const [id, expectedSpec] of Object.entries(expectedCatalogSpecs)) {
-  const entry = catalog[id];
-  if (!entry) continue;
+  for (const [id, expectedSpec] of Object.entries(expectedCatalogSpecs)) {
+    const entry = catalog[id];
+    if (!entry) continue;
 
-  if (entry.executionPlane !== expectedSpec.executionPlane) {
-    error(`executionPlane mismatch for ${id}: expected '${expectedSpec.executionPlane}', got '${entry.executionPlane}'`);
-  }
+    if (entry.executionPlane !== expectedSpec.executionPlane) {
+      error(`executionPlane mismatch for ${id}: expected '${expectedSpec.executionPlane}', got '${entry.executionPlane}'`);
+    }
 
-  if (!Array.isArray(entry.requirementIds)) {
-    error(`requirementIds for ${id} must be an array`);
-  } else {
-    const isSameLength = entry.requirementIds.length === expectedSpec.requirementIds.length;
-    const isSameElements = isSameLength && entry.requirementIds.every((r, idx) => r === expectedSpec.requirementIds[idx]);
-    if (!isSameElements) {
-      error(`requirementIds mismatch for ${id}: expected [${expectedSpec.requirementIds.join(', ')}], got [${entry.requirementIds.join(', ')}]`);
+    if (!Array.isArray(entry.requirementIds)) {
+      error(`requirementIds for ${id} must be an array`);
+    } else {
+      const isSameLength = entry.requirementIds.length === expectedSpec.requirementIds.length;
+      const isSameElements = isSameLength && entry.requirementIds.every((r, idx) => r === expectedSpec.requirementIds[idx]);
+      if (!isSameElements) {
+        error(`requirementIds mismatch for ${id}: expected [${expectedSpec.requirementIds.join(', ')}], got [${entry.requirementIds.join(', ')}]`);
+      }
     }
   }
-}
 
-// Requirement coverage check excluding H01 and H02
-const coveredReqs = new Set();
-for (const [id, entry] of Object.entries(catalog)) {
-  if (id !== 'H01' && id !== 'H02' && Array.isArray(entry.requirementIds)) {
-    entry.requirementIds.forEach(r => coveredReqs.add(r));
+  // Requirement coverage check excluding H01 and H02
+  const coveredReqs = new Set();
+  for (const [id, entry] of Object.entries(catalog)) {
+    if (id !== 'H01' && id !== 'H02' && Array.isArray(entry.requirementIds)) {
+      entry.requirementIds.forEach(r => coveredReqs.add(r));
+    }
   }
+  expectedReqs.forEach(r => {
+    if (!coveredReqs.has(r)) {
+      error(`Requirement ${r} is not covered by any valid non-meta verification.`);
+    }
+  });
 }
-expectedReqs.forEach(r => {
-  if (!coveredReqs.has(r)) {
-    error(`Requirement ${r} is not covered by any valid non-meta verification.`);
-  }
-});
 
 // Registry Hash check
-const hash = crypto.createHash('sha256');
-hash.update(fs.readFileSync(path.join(rootDir, 'audit/m2m/requirements.json')));
-hash.update(fs.readFileSync(path.join(rootDir, 'audit/m2m/verification-catalog.json')));
-hash.update(fs.readFileSync(path.join(rootDir, 'audit/m2m/manual-checks.json')));
-hash.update(fs.readFileSync(path.join(rootDir, 'audit/m2m/work-packages.json')));
-const actualHash = hash.digest('hex');
-if (actualHash !== lock.hash) {
-  error(`Registry lock hash mismatch. Expected ${lock.hash}, got ${actualHash}`);
+if (rawReqs !== null && rawCatalog !== null && rawManual !== null && rawWps !== null) {
+  const hash = crypto.createHash('sha256');
+  hash.update(rawReqs);
+  hash.update(rawCatalog);
+  hash.update(rawManual);
+  hash.update(rawWps);
+  const actualHash = hash.digest('hex');
+  if (lock && actualHash !== lock.hash) {
+    error(`Registry lock hash mismatch. Expected ${lock.hash}, got ${actualHash}`);
+  }
 }
 
 // Progress state constraints
-if (progress.packetId !== 'WP00') {
-  error(`progress.json packetId must be 'WP00', got '${progress.packetId}'`);
-}
-if (progress.attempt !== 'A3') {
-  error(`progress.json attempt must be 'A3', got '${progress.attempt}'`);
-}
-if (progress.externalBaseCommit !== 'ad3de2e99dcc86e23ea4df89ff0038f744fecebf') {
-  error(`progress.json externalBaseCommit mismatch: expected 'ad3de2e99dcc86e23ea4df89ff0038f744fecebf', got '${progress.externalBaseCommit}'`);
-}
-if (progress.externalBaseCommitVerifiedByAgent !== false) {
-  error(`progress.json externalBaseCommitVerifiedByAgent must be false`);
-}
-if (progress.H01 !== 'LOCAL_PASS') {
-  error(`progress.json H01 state must be 'LOCAL_PASS', got '${progress.H01}'`);
-}
-if (progress.H02 !== 'EXTERNAL_PENDING') {
-  error(`progress.json H02 state must be 'EXTERNAL_PENDING', got '${progress.H02}'`);
-}
-
-const otherAutoVerifications = ["D01", "D02", "D03", "D04", "D05", "D06", "F01", "F02", "F03", "F04", "X01", "X02", "X03", "X04", "L01"];
-for (const id of otherAutoVerifications) {
-  if (progress[id] !== 'PLANNED') {
-    error(`progress.json ${id} state must be 'PLANNED', got '${progress[id]}'`);
+if (progress) {
+  if (progress.packetId !== 'WP00') {
+    error(`progress.json packetId must be 'WP00', got '${progress.packetId}'`);
   }
-}
+  if (progress.attempt !== 'A4') {
+    error(`progress.json attempt must be 'A4', got '${progress.attempt}'`);
+  }
+  if (progress.externalBaseCommit !== 'c6ba7f7559adcd92c3bca559aa82900d44d42047') {
+    error(`progress.json externalBaseCommit mismatch: expected 'c6ba7f7559adcd92c3bca559aa82900d44d42047', got '${progress.externalBaseCommit}'`);
+  }
+  if (progress.externalBaseCommitVerifiedByAgent !== false) {
+    error(`progress.json externalBaseCommitVerifiedByAgent must be false`);
+  }
+  if (progress.H01 !== 'LOCAL_PASS') {
+    error(`progress.json H01 state must be 'LOCAL_PASS', got '${progress.H01}'`);
+  }
+  if (progress.H02 !== 'EXTERNAL_PENDING') {
+    error(`progress.json H02 state must be 'EXTERNAL_PENDING', got '${progress.H02}'`);
+  }
 
-if (progress.WP00 === 'ACCEPTED') {
-  error(`progress.json WP00 state cannot be 'ACCEPTED'`);
+  const otherAutoVerifications = ["D01", "D02", "D03", "D04", "D05", "D06", "F01", "F02", "F03", "F04", "X01", "X02", "X03", "X04", "L01"];
+  for (const id of otherAutoVerifications) {
+    if (progress[id] !== 'PLANNED') {
+      error(`progress.json ${id} state must be 'PLANNED', got '${progress[id]}'`);
+    }
+  }
+
+  if (progress.WP00 === 'ACCEPTED') {
+    error(`progress.json WP00 state cannot be 'ACCEPTED'`);
+  }
 }
 
 // Check test files for .skip, .todo, .only

@@ -1,6 +1,6 @@
 {
   "packetId": "WP00",
-  "attempt": "A3",
+  "attempt": "A4",
   "changedFiles": [
     "scripts/verify-m2m-harness.mjs",
     "tests/m2m/harness.test.mjs",
@@ -17,10 +17,13 @@
     "git status --short"
   ],
   "exitCodes": {
-    "node scripts/verify-m2m-harness.mjs": 0,
-    "node --test tests/m2m/harness.test.mjs": 0,
-    "npm run lint": 0,
-    "npm run build": 0
+    "node --version": { "code": 0, "result": "v22.23.1" },
+    "node scripts/verify-m2m-harness.mjs": { "code": 0, "result": "Success" },
+    "node --test tests/m2m/harness.test.mjs": { "code": 0, "result": "19 tests passed" },
+    "npm run lint": { "code": 0, "result": "Success" },
+    "npm run build": { "code": 0, "result": "Build completed with some chunks warnings" },
+    "git diff --check": { "code": 129, "result": "warning: Not a git repository" },
+    "git status --short": { "code": 128, "result": "fatal: not a git repository (or any of the parent directories): .git" }
   },
   "localState": "LOCAL_PASS",
   "externalRequiredVerifications": [
