@@ -1,0 +1,383 @@
+From d3230f752021d82da1042ab275304658912b6a99 Mon Sep 17 00:00:00 2001
+From: Takashi SASAKI <takashi316@gmail.com>
+Date: Fri, 24 Jul 2026 21:51:21 +0900
+Subject: [PATCH] chore: accept WP00 baseline
+
+---
+ audit/m2m/handoff.json         | 131 +++++++++++++++++++++++++--------
+ audit/m2m/progress.json        |  10 +--
+ scripts/verify-m2m-harness.mjs |  22 +++---
+ tests/m2m/harness.test.mjs     |  34 ++++-----
+ 4 files changed, 134 insertions(+), 63 deletions(-)
+
+diff --git a/audit/m2m/handoff.json b/audit/m2m/handoff.json
+index 93d6a07..7b7b191 100644
+--- a/audit/m2m/handoff.json
++++ b/audit/m2m/handoff.json
+@@ -1,18 +1,20 @@
+ {
+   "packetId": "WP00",
+-  "attempt": "A7",
+-  "externalBaseCommit": "314dfe745a997a42311934c5dc671b7d330c9413",
+-  "externalBaseCommitVerifiedByAgent": false,
++  "attempt": "A8",
++  "externalBaseCommit": "1617d76530ee17610aed5e2a2e89d15cd00c66a2",
++  "externalBaseCommitVerifiedByAgent": true,
+   "modifiedFiles": [
+     "scripts/verify-m2m-harness.mjs",
+     "tests/m2m/harness.test.mjs",
+     "audit/m2m/progress.json",
+     "audit/m2m/handoff.json"
+   ],
+-  "deletedFiles": [
+-    "run_all.sh",
+-    "test_out.txt"
+-  ],
++  "deletedFiles": [],
++  "dependencySetup": {
++    "command": "npm --cache /tmp/observer2-wp00-npm-cache install --ignore-scripts --no-package-lock --no-save",
++    "code": 0,
++    "result": "293 packages installed in the local checkout; package.json and lockfiles remained unchanged"
++  },
+   "executionCommands": [
+     "node --version",
+     "node scripts/verify-m2m-harness.mjs",
+@@ -23,42 +25,111 @@
+     "git status --short"
+   ],
+   "exitCodes": {
+-    "node --version": { "code": 0, "result": "v24.14.0" },
+-    "node scripts/verify-m2m-harness.mjs": { "code": 0, "result": "Success with no diagnostics" },
+-    "node --test tests/m2m/harness.test.mjs": { "code": 0, "result": "36 passed; 0 failed, skipped, or todo" },
+-    "npm run lint": { "code": 127, "result": "Blocked because existing dependencies are unavailable: tsc not found" },
+-    "npm run build": { "code": 127, "result": "Blocked because existing dependencies are unavailable: vite not found" },
+-    "git diff --check": { "code": 0, "result": "Success with no whitespace errors" },
+-    "git status --short": { "code": 0, "result": "Four modified files and two deleted files, all within the permitted scope" }
++    "node --version": {
++      "code": 0,
++      "result": "v24.14.0"
++    },
++    "node scripts/verify-m2m-harness.mjs": {
++      "code": 0,
++      "result": "Success with no diagnostics"
++    },
++    "node --test tests/m2m/harness.test.mjs": {
++      "code": 0,
++      "result": "36 passed; 0 failed, skipped, or todo"
++    },
++    "npm run lint": {
++      "code": 0,
++      "result": "TypeScript no-emit validation succeeded"
++    },
++    "npm run build": {
++      "code": 0,
++      "result": "Vite and server builds succeeded with non-fatal chunk-size and import.meta/CJS warnings"
++    },
++    "git diff --check": {
++      "code": 0,
++      "result": "Success with no whitespace errors"
++    },
++    "git status --short": {
++      "code": 0,
++      "result": "Exactly four modified files, all within the WP00 A8 scope"
++    }
+   },
+   "verificationStates": {
+     "H01": "LOCAL_PASS",
+-    "H02": "EXTERNAL_PENDING"
++    "H02": "EXTERNAL_PASS"
++  },
++  "workPackageStates": {
++    "WP00": "ACCEPTED",
++    "WP01-WP07": "PLANNED"
++  },
++  "localState": "LOCAL_PASS",
++  "blockers": [],
++  "externalVerification": {
++    "commit": "1617d76530ee17610aed5e2a2e89d15cd00c66a2",
++    "tree": "d5477f754d9de585d4db550ab2df7dc0f75d5d7f",
++    "parentCommit": "314dfe745a997a42311934c5dc671b7d330c9413",
++    "scope": {
++      "modifiedFiles": [
++        "scripts/verify-m2m-harness.mjs",
++        "tests/m2m/harness.test.mjs",
++        "audit/m2m/progress.json",
++        "audit/m2m/handoff.json"
++      ],
++      "deletedFiles": [
++        "run_all.sh",
++        "test_out.txt"
++      ],
++      "unpermittedChanges": []
++    },
++    "fixedRegistryCombinedSha256": "45426d21e93a3293ea6521c9df5070a0dab9f3d05f99dec0943c182d1663b426",
++    "workflow": {
++      "name": "M2M Baseline Validation",
++      "runId": 30093413634,
++      "url": "https://github.com/TakashiSasaki/observer-2/actions/runs/30093413634",
++      "jobId": 89481667270,
++      "conclusion": "success",
++      "successfulSteps": [
++        "Install dependencies",
++        "Run lint",
++        "Run build",
++        "Verify M2M harness",
++        "Test M2M harness"
++      ]
++    },
++    "testResults": {
++      "tests": 36,
++      "passed": 36,
++      "failed": 0,
++      "skipped": 0,
++      "todo": 0
++    }
+   },
+-  "localState": "BLOCKED",
+-  "blockers": [
+-    "npm run lint cannot run without the existing TypeScript dependency",
+-    "npm run build cannot run without the existing Vite dependency"
+-  ],
+-  "externalRequiredVerifications": [
+-    "H02",
+-    "After GitHub publication, externally verify the actual diff, Actions, H01/H02, and permitted change scope"
+-  ],
+   "constraints": {
+     "noNewDependencies": true,
+-    "noBun": true,
+-    "noPackageInstall": true
++    "noPackageManifestChanges": true,
++    "noLockfileChanges": true,
++    "noApplicationCodeChanges": true,
++    "noFixedRegistryChanges": true
+   },
+   "notChecked": [
+-    "GitHub Actions",
+     "Firebase Emulator"
+   ],
+   "repositoryCheck": {
+-    "githubCheckedForPullRequest": true,
+-    "mainResolvedCommit": "314dfe745a997a42311934c5dc671b7d330c9413"
++    "githubChecked": true,
++    "mainResolvedCommit": "1617d76530ee17610aed5e2a2e89d15cd00c66a2",
++    "mainCommitAndTreeVerifiedByAgent": true
+   },
+   "pendingDecisions": {
+     "v1FirestoreDataPolicy": "pending-user-decision",
+     "lockfileAdoption": "pending-decision"
+-  }
++  },
++  "nextWork": {
++    "packetId": "WP01",
++    "description": "v2ドメイン型と不変条件",
++    "readiness": "READY_AFTER_WP00_A8_INTEGRATION"
++  },
++  "postMergeVerificationRequired": [
++    "Verify that the merged A8 diff contains only the four declared modified files",
++    "Verify the main-branch M2M Baseline Validation run for the merged A8 commit"
++  ]
+ }
+diff --git a/audit/m2m/progress.json b/audit/m2m/progress.json
+index 4fe43df..76f9e42 100644
+--- a/audit/m2m/progress.json
++++ b/audit/m2m/progress.json
+@@ -1,10 +1,10 @@
+ {
+   "packetId": "WP00",
+-  "attempt": "A7",
+-  "externalBaseCommit": "314dfe745a997a42311934c5dc671b7d330c9413",
+-  "externalBaseCommitVerifiedByAgent": false,
++  "attempt": "A8",
++  "externalBaseCommit": "1617d76530ee17610aed5e2a2e89d15cd00c66a2",
++  "externalBaseCommitVerifiedByAgent": true,
+   "H01": "LOCAL_PASS",
+-  "H02": "EXTERNAL_PENDING",
++  "H02": "EXTERNAL_PASS",
+   "D01": "PLANNED",
+   "D02": "PLANNED",
+   "D03": "PLANNED",
+@@ -23,7 +23,7 @@
+   "M01": "PLANNED",
+   "M02": "PLANNED",
+   "M03": "PLANNED",
+-  "WP00": "PLANNED",
++  "WP00": "ACCEPTED",
+   "WP01": "PLANNED",
+   "WP02": "PLANNED",
+   "WP03": "PLANNED",
+diff --git a/scripts/verify-m2m-harness.mjs b/scripts/verify-m2m-harness.mjs
+index bf1db2d..c67f275 100644
+--- a/scripts/verify-m2m-harness.mjs
++++ b/scripts/verify-m2m-harness.mjs
+@@ -406,20 +406,20 @@ if (progress) {
+   if ('packetId' in progress && progress.packetId !== 'WP00') {
+     error(`progress.json packetId must be 'WP00', got ${safeStr(progress.packetId)}`);
+   }
+-  if ('attempt' in progress && progress.attempt !== 'A7') {
+-    error(`progress.json attempt must be 'A7', got ${safeStr(progress.attempt)}`);
++  if ('attempt' in progress && progress.attempt !== 'A8') {
++    error(`progress.json attempt must be 'A8', got ${safeStr(progress.attempt)}`);
+   }
+-  if ('externalBaseCommit' in progress && progress.externalBaseCommit !== '314dfe745a997a42311934c5dc671b7d330c9413') {
+-    error(`progress.json externalBaseCommit mismatch: expected '314dfe745a997a42311934c5dc671b7d330c9413', got ${safeStr(progress.externalBaseCommit)}`);
++  if ('externalBaseCommit' in progress && progress.externalBaseCommit !== '1617d76530ee17610aed5e2a2e89d15cd00c66a2') {
++    error(`progress.json externalBaseCommit mismatch: expected '1617d76530ee17610aed5e2a2e89d15cd00c66a2', got ${safeStr(progress.externalBaseCommit)}`);
+   }
+-  if ('externalBaseCommitVerifiedByAgent' in progress && progress.externalBaseCommitVerifiedByAgent !== false) {
+-    error(`progress.json externalBaseCommitVerifiedByAgent must be false, got ${safeStr(progress.externalBaseCommitVerifiedByAgent)}`);
++  if ('externalBaseCommitVerifiedByAgent' in progress && progress.externalBaseCommitVerifiedByAgent !== true) {
++    error(`progress.json externalBaseCommitVerifiedByAgent must be true, got ${safeStr(progress.externalBaseCommitVerifiedByAgent)}`);
+   }
+   if ('H01' in progress && progress.H01 !== 'LOCAL_PASS') {
+     error(`progress.json H01 state must be 'LOCAL_PASS', got ${safeStr(progress.H01)}`);
+   }
+-  if ('H02' in progress && progress.H02 !== 'EXTERNAL_PENDING') {
+-    error(`progress.json H02 state must be 'EXTERNAL_PENDING', got ${safeStr(progress.H02)}`);
++  if ('H02' in progress && progress.H02 !== 'EXTERNAL_PASS') {
++    error(`progress.json H02 state must be 'EXTERNAL_PASS', got ${safeStr(progress.H02)}`);
+   }
+ 
+   const plannedKeys = [
+@@ -427,7 +427,7 @@ if (progress) {
+     "F01", "F02", "F03", "F04",
+     "X01", "X02", "X03", "X04", "L01",
+     "M01", "M02", "M03",
+-    "WP00", "WP01", "WP02", "WP03", "WP04", "WP05", "WP06", "WP07"
++    "WP01", "WP02", "WP03", "WP04", "WP05", "WP06", "WP07"
+   ];
+   for (const id of plannedKeys) {
+     if (id in progress && progress[id] !== 'PLANNED') {
+@@ -435,8 +435,8 @@ if (progress) {
+     }
+   }
+ 
+-  if (progress.WP00 === 'ACCEPTED') {
+-    error(`progress.json WP00 state cannot be 'ACCEPTED', got ${safeStr(progress.WP00)}`);
++  if ('WP00' in progress && progress.WP00 !== 'ACCEPTED') {
++    error(`progress.json WP00 state must be 'ACCEPTED', got ${safeStr(progress.WP00)}`);
+   }
+ }
+ 
+diff --git a/tests/m2m/harness.test.mjs b/tests/m2m/harness.test.mjs
+index 6bf4773..0d70f76 100644
+--- a/tests/m2m/harness.test.mjs
++++ b/tests/m2m/harness.test.mjs
+@@ -166,14 +166,14 @@ test('H01が LOCAL_PASS 以外の場合を拒否する', () => {
+   assert.match(res.output, /H01 state must be 'LOCAL_PASS'/);
+ });
+ 
+-test('H02が EXTERNAL_PENDING 以外の場合を拒否する', () => {
++test('H02が EXTERNAL_PASS 以外の場合を拒否する', () => {
+   const tmp = setupTemp();
+   updateFile(tmp, 'progress.json', d => {
+-    d['H02'] = 'EXTERNAL_PASS';
++    d['H02'] = 'EXTERNAL_PENDING';
+   });
+   const res = runVerify(tmp);
+   assert.strictEqual(res.success, false);
+-  assert.match(res.output, /H02 state must be 'EXTERNAL_PENDING'/);
++  assert.match(res.output, /H02 state must be 'EXTERNAL_PASS'/);
+ });
+ 
+ test('F01、F04、またはその他の未実施自動検証が PLANNED 以外の場合を拒否する', () => {
+@@ -202,14 +202,14 @@ test('F01、F04、またはその他の未実施自動検証が PLANNED 以外
+   assert.match(res.output, /progress.json D01 state must be 'PLANNED'/);
+ });
+ 
+-test('WP00が ACCEPTED の場合を拒否する', () => {
++test('WP00が ACCEPTED 以外の場合を拒否する', () => {
+   const tmp = setupTemp();
+   updateFile(tmp, 'progress.json', d => {
+-    d['WP00'] = 'ACCEPTED';
++    d['WP00'] = 'PLANNED';
+   });
+   const res = runVerify(tmp);
+   assert.strictEqual(res.success, false);
+-  assert.match(res.output, /WP00 state cannot be 'ACCEPTED'/);
++  assert.match(res.output, /WP00 state must be 'ACCEPTED'/);
+ });
+ 
+ test('SHA-256不一致を拒否する', () => {
+@@ -233,7 +233,7 @@ test('requirements.jsonをraw JSON構文エラーにし、progress.jsonのH02を
+   const res = runVerify(tmp);
+   assert.strictEqual(res.success, false);
+   assert.match(res.output, /Syntax error in requirements\.json/);
+-  assert.match(res.output, /H02 state must be 'EXTERNAL_PENDING'/);
++  assert.match(res.output, /H02 state must be 'EXTERNAL_PASS'/);
+ });
+ 
+ test('R12をすべての非メタ検証から外し、H01だけにR12を追加した場合、固定対応不一致とカバレッジ診断が出ること', () => {
+@@ -276,10 +276,10 @@ test('packetId、attempt、externalBaseCommit、externalBaseCommitVerifiedByAgen
+   });
+   res = runVerify(tmp);
+   assert.strictEqual(res.success, false);
+-  assert.match(res.output, /attempt must be 'A7'/);
++  assert.match(res.output, /attempt must be 'A8'/);
+ 
+   updateFile(tmp, 'progress.json', d => {
+-    d['attempt'] = 'A7';
++    d['attempt'] = 'A8';
+     d['externalBaseCommit'] = 'badcommit';
+   });
+   res = runVerify(tmp);
+@@ -287,12 +287,12 @@ test('packetId、attempt、externalBaseCommit、externalBaseCommitVerifiedByAgen
+   assert.match(res.output, /externalBaseCommit mismatch/);
+ 
+   updateFile(tmp, 'progress.json', d => {
+-    d['externalBaseCommit'] = '314dfe745a997a42311934c5dc671b7d330c9413';
+-    d['externalBaseCommitVerifiedByAgent'] = true;
++    d['externalBaseCommit'] = '1617d76530ee17610aed5e2a2e89d15cd00c66a2';
++    d['externalBaseCommitVerifiedByAgent'] = false;
+   });
+   res = runVerify(tmp);
+   assert.strictEqual(res.success, false);
+-  assert.match(res.output, /externalBaseCommitVerifiedByAgent must be false/);
++  assert.match(res.output, /externalBaseCommitVerifiedByAgent must be true/);
+ });
+ 
+ // New A6 regression tests
+@@ -309,7 +309,7 @@ test('D02の requirementIds を {"toString": null} などのオブジェクト
+   const res = runVerify(tmp);
+   assert.strictEqual(res.success, false);
+   assert.match(res.output, /requirementIds mismatch for D02/);
+-  assert.match(res.output, /H02 state must be 'EXTERNAL_PENDING'/);
++  assert.match(res.output, /H02 state must be 'EXTERNAL_PASS'/);
+   assert.doesNotMatch(res.output, /TypeError/);
+   assert.doesNotMatch(res.output, /Cannot convert object to primitive value/);
+ });
+@@ -326,7 +326,7 @@ test('F01の executionPlane を {"toString": null} のようなオブジェク
+   const res = runVerify(tmp);
+   assert.strictEqual(res.success, false);
+   assert.match(res.output, /executionPlane mismatch for F01/);
+-  assert.match(res.output, /H02 state must be 'EXTERNAL_PENDING'/);
++  assert.match(res.output, /H02 state must be 'EXTERNAL_PASS'/);
+   assert.doesNotMatch(res.output, /TypeError/);
+ });
+ 
+@@ -339,7 +339,7 @@ test('progress.json の packetId をオブジェクトにし、H02をLOCAL_PASS
+   const res = runVerify(tmp);
+   assert.strictEqual(res.success, false);
+   assert.match(res.output, /packetId must be 'WP00'/);
+-  assert.match(res.output, /H02 state must be 'EXTERNAL_PENDING'/);
++  assert.match(res.output, /H02 state must be 'EXTERNAL_PASS'/);
+   assert.doesNotMatch(res.output, /TypeError/);
+ });
+ 
+@@ -445,7 +445,7 @@ test('verification-catalog.json の D01 などを null にし、同時に progre
+   const res = runVerify(tmp);
+   assert.strictEqual(res.success, false);
+   assert.match(res.output, /verification-catalog item D01 must be an object, got null/);
+-  assert.match(res.output, /progress\.json H02 state must be 'EXTERNAL_PENDING'/);
++  assert.match(res.output, /progress\.json H02 state must be 'EXTERNAL_PASS'/);
+   assert.doesNotMatch(res.output, /TypeError/);
+ });
+ 
+@@ -495,7 +495,7 @@ test('progress.json の必須キー欠落と未知キー追加を拒否する',
+   assert.match(res.output, /Unknown keys in progress\.json: extraKey/);
+ });
+ 
+-test('M01〜M03およびWP00〜WP07のいずれかを PLANNED 以外に変更した場合を拒否する', () => {
++test('M01〜M03およびWP01〜WP07のいずれかを PLANNED 以外に変更した場合を拒否する', () => {
+   const tmp = setupTemp();
+   updateFile(tmp, 'progress.json', d => {
+     d['M01'] = 'LOCAL_PASS';
