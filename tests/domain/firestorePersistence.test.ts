@@ -68,6 +68,10 @@ test('all observation-set feed plans are bounded, scoped, and covered by indexes
     assertCompositeIndex(plan);
   }
 
+  const exchangeMine = observationSetFeedQueryPlan('mine', ownerId, undefined, 1000);
+  assert.equal(exchangeMine?.limit, 1000);
+  assertCompositeIndex(exchangeMine!);
+
   assert.deepEqual(mine?.filters, [
     { fieldPath: 'uid', op: '==', value: ownerId },
     { fieldPath: 'deletedAt', op: '==', value: null },
@@ -113,6 +117,7 @@ test('the attachment picker queries only active Observations owned by its princi
   ]);
   assert.deepEqual(plan?.orderBy, [{ fieldPath: 'createdAt', direction: 'desc' }]);
   assert.equal(plan?.limit, 100);
+  assert.equal(ownedObservationPickerQueryPlan(ownerId, 1000)?.limit, 1000);
   assertCompositeIndex(plan!);
 });
 

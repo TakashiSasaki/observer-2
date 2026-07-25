@@ -156,7 +156,7 @@ test('restored developer documentation describes the normalized model without re
   assert.match(contract, /ObservationSetMembership/);
   assert.match(contract, /Never send a view to a Firestore entity converter/);
   assert.match(contract, /not currently specified as RFC 8785 JCS/);
-  assert.match(workPackages, /5 further iterations after this change/);
+  assert.match(workPackages, /4 further iterations after this change/);
   assert.match(workPackages, /WP06.*\*\*partial\*\*/);
   assert.match(auditReadme, /not the\s+current implementation status/);
 });
@@ -167,4 +167,24 @@ test('production server build does not rely on import.meta inside its CommonJS o
   assert.doesNotMatch(server, /fileURLToPath\(import\.meta\.url\)/);
   assert.match(server, /process\.argv\.includes\('--production'\)/);
   assert.match(packageJson.scripts.start, /--production/);
+});
+
+test('exchange UI is owner-scoped, bounded, and explicitly no-write', () => {
+  const exchangePanel = fs.readFileSync(path.join(root, 'src/components/ObservationExchangePanel.tsx'), 'utf8');
+  const service = fs.readFileSync(path.join(root, 'src/services/firebaseService.ts'), 'utf8');
+  const modal = fs.readFileSync(path.join(root, 'src/components/ObservationModal.tsx'), 'utf8');
+  const appPage = fs.readFileSync(path.join(root, 'src/pages/AppPage.tsx'), 'utf8');
+  const rawImportTypes = fs.readFileSync(path.join(root, 'src/vite-env.d.ts'), 'utf8');
+
+  assert.match(exchangePanel, /exportOwnedObservationInterchangeBundle/);
+  assert.match(exchangePanel, /dryRunOwnedObservationInterchangeImport/);
+  assert.match(exchangePanel, /Firestoreには書き込んでいません/);
+  assert.match(service, /createObservationInterchangeBundle/);
+  assert.match(service, /analyzeObservationInterchangeImport/);
+  assert.match(service, /never writes to\s+\* Firestore/);
+  assert.match(modal, /観測セットを作成/);
+  assert.match(modal, /captureMode === 'composite'/);
+  assert.match(appPage, /ObservationExchangePanel/);
+  assert.match(appPage, /isRemoteDataIntegrityError/);
+  assert.match(rawImportTypes, /\*\?raw/);
 });

@@ -2,8 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createMembership } from '../../src/domain/observationDomain.ts';
 import {
+  analyzeObservationInterchangeImport,
   assertObservationInterchangeBundle,
   createObservationInterchangeBundle,
+  invalidObservationInterchangeImportDryRunReport,
+  MAX_INTERCHANGE_FILE_BYTES,
+  MAX_INTERCHANGE_RECORDS,
   parseObservationInterchangeBundle,
   serializeObservationInterchangeBundle,
 } from '../../src/domain/observationInterchange.ts';
@@ -167,5 +171,96 @@ test('v2 exchange rejects legacy, dangling, cross-owner, duplicate, and non-JSON
   assert.throws(
     () => parseObservationInterchangeBundle('{not json}'),
     /serialized import is not valid JSON/,
+  );
+});
+
+test('import dry-run reports counts, references, deletions, and safe identical collisions', () => {
+  const { first, second, set, memberships } = fixture();
+  const bundle = createObservationInterchangeBundle({
+    exportedAt,
+    observations: [first, { ...second, deletedAt: exportedAt, updatedAt: exportedAt }],
+    observationSets: [set],
+    memberships,
+  });
+
+  const report = analyzeObservationInterchangeImport(
+    bundle,
+    { observations: [first], observationSets: [set], memberships: [memberships[0]] },
+    ownerId,
+  );
+
+  assert.equal(report.valid, true);
+  assert.deepEqual(report.counts, { observations: 2, observationSets: 1, memberships: 2, total: 5 });
+  assert.deepEqual(report.deleted, { observations: 1, observationSets: 0, total: 1 });
+  assert.deepEqual(report.references, { memberships: 2, observationSets: 1, observations: 2, dangling: 0 });
+  assert.deepEqual(report.ownership, {
+    foreignRecords: 0,
+    foreignObservations: 0,
+    foreignObservationSets: 0,
+    foreignMemberships: 0,
+  });
+  assert.deepEqual(report.collisions, { identical: 3, conflicting: 0, total: 3 });
+});
+
+test('import dry-run blocks foreign owners and different records with the same ID', () => {
+  const { first, set, memberships } = fixture();
+  const foreign = observation('018fd116-8cf0-7def-8abc-1234567890ae', 'owner-2');
+  const foreignSet = observationSet('018fd116-8cf0-7def-8abc-1234567890af', 'owner-2');
+  const foreignMembership = createMembership({
+    observationSet: foreignSet,
+    observation: foreign,
+    position: 0,
+    createdAt,
+  });
+  const bundle = createObservationInterchangeBundle({
+    exportedAt,
+    observations: [first, foreign],
+    observationSets: [set, foreignSet],
+    memberships: [foreignMembership],
+  });
+  const report = analyzeObservationInterchangeImport(
+    bundle,
+    { observations: [{ ...first, title: 'different existing record' }], observationSets: [set], memberships: [] },
+    ownerId,
+  );
+
+  assert.equal(report.valid, false);
+  assert.equal(report.ownership.foreignRecords, 3);
+  assert.equal(report.collisions.conflicting, 1);
+  assert.equal(report.errors.some((message) => message.includes('uid')), true);
+  assert.equal(report.errors.some((message) => message.includes('conflicts')), true);
+});
+
+test('invalid import dry-run report keeps parse failures visible to the caller', () => {
+  const report = invalidObservationInterchangeImportDryRunReport('owner-1', 'bundle.observations[2] is invalid');
+  assert.equal(report.valid, false);
+  assert.deepEqual(report.errors, ['bundle.observations[2] is invalid']);
+  assert.equal(report.counts.total, 0);
+});
+
+test('exchange serialization enforces file and record limits', () => {
+  const records = Array.from({ length: MAX_INTERCHANGE_RECORDS + 1 }, (_, index) => (
+    observation(`018fd116-8cf0-7def-8abc-${index.toString(16).padStart(12, '0')}`)
+  ));
+  const tooMany = createObservationInterchangeBundle({
+    exportedAt,
+    observations: records,
+    observationSets: [],
+    memberships: [],
+  });
+  assert.throws(
+    () => serializeObservationInterchangeBundle(tooMany),
+    new RegExp(`maximum is ${MAX_INTERCHANGE_RECORDS}`),
+  );
+
+  const tooLarge = createObservationInterchangeBundle({
+    exportedAt,
+    observations: [{ ...observation('018fd116-8cf0-7def-8abc-1234567890ae'), rawContent: 'x'.repeat(MAX_INTERCHANGE_FILE_BYTES) }],
+    observationSets: [],
+    memberships: [],
+  });
+  assert.throws(
+    () => serializeObservationInterchangeBundle(tooLarge),
+    /serialized bundle is .* maximum is 2000000/,
   );
 });

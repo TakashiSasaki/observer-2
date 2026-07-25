@@ -23,6 +23,7 @@ import { Navbar } from '../components/Navbar';
 import { ObservationCard } from '../components/ObservationCard';
 import { ObservationModal } from '../components/ObservationModal';
 import { ObservationDetailModal } from '../components/ObservationDetailModal';
+import { ObservationExchangePanel } from '../components/ObservationExchangePanel';
 import { MapView } from '../components/MapView';
 import { AuthModal } from '../components/AuthModal';
 import {
@@ -39,12 +40,15 @@ import {
   Loader2,
   RefreshCw,
   Compass,
+  AlertTriangle,
 } from 'lucide-react';
+import { isRemoteDataIntegrityError } from '../domain/remoteReadPolicy';
 
 export default function AppPage() {
   const [currentUser, setCurrentUser] = useState<ObserverUser | null>(null);
   const [observations, setObservations] = useState<ObservationSetView[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [dataLoadError, setDataLoadError] = useState<string | null>(null);
 
   // Filters & Views
   const [activeFilter, setActiveFilter] = useState<'mine' | 'shared' | 'authenticated' | 'public'>('mine');
@@ -88,6 +92,7 @@ export default function AppPage() {
   // Fetch observations whenever filter or user changes
   const loadData = async () => {
     setIsLoading(true);
+    setDataLoadError(null);
     try {
       const items = await fetchObservations(activeFilter, currentUser?.uid, currentUser?.email);
       setObservations(items);
@@ -103,6 +108,14 @@ export default function AppPage() {
       }
     } catch (err) {
       console.error('Error loading observations:', err);
+      // Never leave an earlier filter/view visible after a contract violation.
+      // A stale list would make malformed v2 data look successfully loaded.
+      setObservations([]);
+      setSelectedObservation(null);
+      setAttachmentCandidates([]);
+      setDataLoadError(isRemoteDataIntegrityError(err)
+        ? 'Firestoreのv2データ契約に違反する記録を検出しました。古い一覧は表示していません。データを修正した後に再読み込みしてください。'
+        : '観測データを読み込めませんでした。認証状態とネットワークを確認して再読み込みしてください。');
     } finally {
       setIsLoading(false);
     }
@@ -149,6 +162,7 @@ export default function AppPage() {
       observations: data.observations || [],
     });
 
+    setDataLoadError(null);
     setObservations((prev) => [newDoc, ...prev]);
   };
 
@@ -339,6 +353,8 @@ export default function AppPage() {
           </div>
         </div>
 
+        {currentUser && <ObservationExchangePanel currentUser={currentUser} />}
+
         {/* View Layouts */}
         {isLoading ? (
           <div className="p-12 text-center space-y-3 bg-white rounded-xl border border-slate-200 shadow-xs">
@@ -346,6 +362,20 @@ export default function AppPage() {
             <div className="text-xs font-bold text-slate-700 font-mono">
               [SYSTEM] Loading observation telemetry from Firestore...
             </div>
+          </div>
+        ) : dataLoadError ? (
+          <div className="mx-auto max-w-2xl rounded-xl border border-rose-200 bg-rose-50 p-8 text-center shadow-xs">
+            <AlertTriangle className="mx-auto h-8 w-8 text-rose-600" />
+            <h3 className="mt-3 text-sm font-bold text-rose-950">観測データを表示できません</h3>
+            <p className="mt-2 text-xs leading-6 text-rose-900">{dataLoadError}</p>
+            <button
+              type="button"
+              onClick={loadData}
+              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-rose-700 px-4 py-2 text-xs font-bold text-white transition hover:bg-rose-800"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              再読み込み
+            </button>
           </div>
         ) : activeViewMode === 'map' ? (
           <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
