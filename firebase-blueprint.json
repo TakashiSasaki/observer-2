@@ -53,6 +53,7 @@
   "indexes": {
     "file": "firestore.indexes.json",
     "requiredFor": [
+      "owner-scoped active Observation selection when attaching an existing Observation to a set",
       "owner, visibility, and shared-email observation-set feeds",
       "observation-set membership projection ordered by position and deterministic document ID",
       "reverse membership lookup by observation"

@@ -16,6 +16,12 @@ import {
   mergeNormalizedObservationCache,
 } from '../../src/domain/normalizedObservationCache.ts';
 import {
+  attachObservationToSetView,
+  detachObservationFromSetView,
+  nextMembershipPosition,
+  unattachedOwnedObservationsForSet,
+} from '../../src/domain/observationSetViewEditing.ts';
+import {
   CURRENT_SCHEMA_VERSION,
   type Observation,
   type ObservationSet,
@@ -108,6 +114,68 @@ test('detaching removes only a membership and preserves the Observation entity',
   assert.equal(detached[0].observations.length, 0);
   assert.equal(item.deletedAt, null);
   assert.equal(item.id, membership.observationId);
+});
+
+test('view editing attaches an existing canonical Observation and detaches only its Membership', () => {
+  const item = observation();
+  const setA = observationSet('018fd116-8cf0-7def-8abc-1234567890ac');
+  const setB = observationSet('018fd116-8cf0-7def-8abc-1234567890ad');
+  const membershipA = createMembership({ observationSet: setA, observation: item, position: 0, createdAt });
+  const [viewA] = buildObservationSetViews({
+    observationSets: [setA],
+    observations: [item],
+    memberships: [membershipA],
+  });
+  const [emptyViewB] = buildObservationSetViews({
+    observationSets: [setB],
+    observations: [],
+    memberships: [],
+  });
+  const membershipB = createMembership({ observationSet: setB, observation: item, position: 0, createdAt });
+
+  const attachedViewB = attachObservationToSetView(emptyViewB, item, membershipB);
+  assert.deepEqual(attachedViewB.observations.map((entry) => entry.id), [item.id]);
+  assert.deepEqual(attachedViewB.memberships.map((entry) => entry.id), [membershipB.id]);
+  assert.equal(nextMembershipPosition(attachedViewB), 1);
+  assert.deepEqual(viewA.observations.map((entry) => entry.id), [item.id]);
+
+  const detachedViewB = detachObservationFromSetView(attachedViewB, item.id);
+  assert.deepEqual(detachedViewB.observations, []);
+  assert.deepEqual(detachedViewB.memberships, []);
+  assert.equal(item.deletedAt, null);
+  assert.equal(viewA.memberships[0].observationId, item.id);
+});
+
+test('attachment candidates exclude existing relations, deleted records, and other owners', () => {
+  const attached = observation();
+  const candidate = observation({
+    id: '018fd116-8cf0-7def-8abc-1234567890ae',
+    createdAt: '2026-07-25T12:00:00.000Z',
+    updatedAt: '2026-07-25T12:00:00.000Z',
+  });
+  const deleted = observation({
+    id: '018fd116-8cf0-7def-8abc-1234567890af',
+    deletedAt: '2026-07-25T12:00:00.000Z',
+    updatedAt: '2026-07-25T12:00:00.000Z',
+  });
+  const otherOwner = observation({
+    id: '018fd116-8cf0-7def-8abc-1234567890b0',
+    uid: 'owner-b',
+  });
+  const set = observationSet('018fd116-8cf0-7def-8abc-1234567890b1');
+  const membership = createMembership({ observationSet: set, observation: attached, position: 0, createdAt });
+  const [view] = buildObservationSetViews({
+    observationSets: [set],
+    observations: [attached],
+    memberships: [membership],
+  });
+
+  assert.deepEqual(
+    unattachedOwnedObservationsForSet(view, 'owner-a', [attached, candidate, deleted, otherOwner])
+      .map((entry) => entry.id),
+    [candidate.id],
+  );
+  assert.deepEqual(unattachedOwnedObservationsForSet(view, 'owner-b', [candidate]), []);
 });
 
 test('soft-deleting either endpoint does not mutate the other endpoint', () => {

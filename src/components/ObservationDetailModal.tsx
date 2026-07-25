@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ObservationSetView, VisibilityType } from '../types';
+import { Observation, ObservationSetView, VisibilityType } from '../types';
 import {
   X,
   MapPin,
@@ -17,6 +17,9 @@ import {
   ChevronRight,
   ExternalLink,
   User,
+  Plus,
+  Unlink,
+  Loader2,
 } from 'lucide-react';
 
 interface ObservationDetailModalProps {
@@ -24,6 +27,12 @@ interface ObservationDetailModalProps {
   currentUserId?: string;
   onClose: () => void;
   onVisibilityChange: (id: string, newVis: VisibilityType, allowedEmails?: string[]) => void;
+  attachmentCandidates: Observation[];
+  isAttachmentCandidatesLoading: boolean;
+  attachmentCandidatesError: string | null;
+  onLoadAttachmentCandidates: () => Promise<void>;
+  onAttachObservation: (observationId: string) => Promise<void>;
+  onDetachObservation: (observationId: string) => Promise<void>;
 }
 
 export const ObservationDetailModal: React.FC<ObservationDetailModalProps> = ({
@@ -31,14 +40,25 @@ export const ObservationDetailModal: React.FC<ObservationDetailModalProps> = ({
   currentUserId,
   onClose,
   onVisibilityChange,
+  attachmentCandidates,
+  isAttachmentCandidatesLoading,
+  attachmentCandidatesError,
+  onLoadAttachmentCandidates,
+  onAttachObservation,
+  onDetachObservation,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [isAttachmentPickerOpen, setIsAttachmentPickerOpen] = useState(false);
+  const [membershipActionId, setMembershipActionId] = useState<string | null>(null);
 
   if (!observation) return null;
 
-  const obsItems = observation.observations || [];
+  const obsItems = observation.observations;
 
-  const isOwner = currentUserId && observation.uid === currentUserId;
+  const isOwner = Boolean(currentUserId && observation.uid === currentUserId);
+  const eligibleAttachmentCandidates = attachmentCandidates.filter(
+    (candidate) => !obsItems.some((item) => item.id === candidate.id),
+  );
 
   const formatDate = (isoStr: string) => {
     try {
@@ -61,6 +81,35 @@ export const ObservationDetailModal: React.FC<ObservationDetailModalProps> = ({
     navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const openAttachmentPicker = async () => {
+    setIsAttachmentPickerOpen(true);
+    await onLoadAttachmentCandidates();
+  };
+
+  const attachCandidate = async (observationId: string) => {
+    setMembershipActionId(`attach:${observationId}`);
+    try {
+      await onAttachObservation(observationId);
+    } catch (error) {
+      console.error('Failed to attach Observation to set:', error);
+      alert('観測をセットへ追加できませんでした。');
+    } finally {
+      setMembershipActionId(null);
+    }
+  };
+
+  const detachMember = async (observationId: string) => {
+    setMembershipActionId(`detach:${observationId}`);
+    try {
+      await onDetachObservation(observationId);
+    } catch (error) {
+      console.error('Failed to detach Observation from set:', error);
+      alert('セットから観測を外せませんでした。');
+    } finally {
+      setMembershipActionId(null);
+    }
   };
 
   return (
@@ -156,7 +205,7 @@ export const ObservationDetailModal: React.FC<ObservationDetailModalProps> = ({
               </div>
 
               <div className="space-y-2">
-                {obsItems.map((sub: any, idx: number) => (
+                {obsItems.map((sub: Observation, idx: number) => (
                   <div
                     key={sub.id || idx}
                     className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2"
@@ -185,6 +234,26 @@ export const ObservationDetailModal: React.FC<ObservationDetailModalProps> = ({
                         <span className="text-[10px] text-slate-400 font-mono">
                           {new Date(sub.createdAt).toLocaleTimeString('ja-JP')}
                         </span>
+                        {isOwner && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`「${sub.title}」をこのセットから外しますか？ 観測本体と他のセットへの所属は残ります。`)) {
+                                void detachMember(sub.id);
+                              }
+                            }}
+                            disabled={membershipActionId !== null}
+                            title="このセットから外す"
+                            className="inline-flex items-center gap-1 rounded border border-rose-200 bg-white px-1.5 py-1 text-[10px] font-bold text-rose-700 transition hover:bg-rose-50 disabled:cursor-wait disabled:opacity-60"
+                          >
+                            {membershipActionId === `detach:${sub.id}` ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Unlink className="h-3 w-3" />
+                            )}
+                            このセットから外す
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -209,6 +278,81 @@ export const ObservationDetailModal: React.FC<ObservationDetailModalProps> = ({
                 ))}
               </div>
             </div>
+          )}
+
+          {isOwner && (
+            <section className="space-y-2 rounded-xl border border-blue-200 bg-blue-50/60 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-xs font-bold text-blue-950">既存の観測をこのセットへ追加</h3>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-blue-800">
+                    同じ所有者の有効なObservationだけをMembershipとして追加します。観測本体を複製しません。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isAttachmentPickerOpen) {
+                      setIsAttachmentPickerOpen(false);
+                    } else {
+                      void openAttachmentPicker();
+                    }
+                  }}
+                  disabled={isAttachmentCandidatesLoading || membershipActionId !== null}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-2.5 py-1.5 text-[11px] font-bold text-white transition hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {isAttachmentCandidatesLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                  {isAttachmentPickerOpen ? '候補を閉じる' : '既存観測を選ぶ'}
+                </button>
+              </div>
+
+              {isAttachmentPickerOpen && (
+                <div className="space-y-2 border-t border-blue-200 pt-2">
+                  {isAttachmentCandidatesLoading && (
+                    <div className="flex items-center gap-2 py-2 text-[11px] text-slate-600">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />
+                      追加できる観測を読み込んでいます…
+                    </div>
+                  )}
+                  {attachmentCandidatesError && (
+                    <p className="rounded border border-rose-200 bg-rose-50 p-2 text-[11px] text-rose-700">
+                      {attachmentCandidatesError}
+                    </p>
+                  )}
+                  {!isAttachmentCandidatesLoading && !attachmentCandidatesError && eligibleAttachmentCandidates.length === 0 && (
+                    <p className="rounded border border-blue-100 bg-white p-2 text-[11px] text-slate-600">
+                      追加可能な自身のObservationはありません。すでに所属済みの観測、論理削除済みの観測、他者の観測は候補に表示しません。
+                    </p>
+                  )}
+                  {eligibleAttachmentCandidates.map((candidate) => (
+                    <div
+                      key={candidate.id}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-blue-100 bg-white p-2"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate text-xs font-bold text-slate-800">{candidate.title}</div>
+                        <div className="mt-0.5 truncate font-mono text-[10px] text-slate-500">
+                          {candidate.type.toUpperCase()} · {candidate.id}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void attachCandidate(candidate.id)}
+                        disabled={membershipActionId !== null}
+                        className="inline-flex shrink-0 items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700 transition hover:bg-blue-100 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        {membershipActionId === `attach:${candidate.id}` ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Plus className="h-3 w-3" />
+                        )}
+                        追加
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
           )}
 
           {/* Location & Time Box */}

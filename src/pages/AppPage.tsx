@@ -4,12 +4,21 @@ import { auth } from '../firebase';
 import { ObservationSetView, Observation, VisibilityType, ObservationType, ObserverUser } from '../types';
 import {
   fetchObservations,
+  fetchOwnedActiveObservations,
   createObservation,
+  attachObservationToSet,
+  detachObservationFromSet,
   updateObservationSetVisibility,
   softDeleteObservationSet,
   formatUser,
   loginAnonymously,
 } from '../services/firebaseService';
+import {
+  attachObservationToSetView,
+  detachObservationFromSetView,
+  nextMembershipPosition,
+  unattachedOwnedObservationsForSet,
+} from '../domain/observationSetViewEditing';
 import { Navbar } from '../components/Navbar';
 import { ObservationCard } from '../components/ObservationCard';
 import { ObservationModal } from '../components/ObservationModal';
@@ -47,6 +56,9 @@ export default function AppPage() {
   const [isNewObsModalOpen, setIsNewObsModalOpen] = useState<boolean>(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [selectedObservation, setSelectedObservation] = useState<ObservationSetView | null>(null);
+  const [attachmentCandidates, setAttachmentCandidates] = useState<Observation[]>([]);
+  const [isAttachmentCandidatesLoading, setIsAttachmentCandidatesLoading] = useState(false);
+  const [attachmentCandidatesError, setAttachmentCandidatesError] = useState<string | null>(null);
 
   // Initial Auth Listener
   useEffect(() => {
@@ -181,6 +193,68 @@ export default function AppPage() {
     }
   };
 
+  const replaceObservationSetView = (nextView: ObservationSetView) => {
+    setObservations((previous) => previous.map((view) => (
+      view.id === nextView.id ? nextView : view
+    )));
+    setSelectedObservation((previous) => (
+      previous?.id === nextView.id ? nextView : previous
+    ));
+  };
+
+  const loadAttachmentCandidates = async () => {
+    const target = selectedObservation;
+    if (!currentUser || !target || target.uid !== currentUser.uid) return;
+
+    setIsAttachmentCandidatesLoading(true);
+    setAttachmentCandidatesError(null);
+    try {
+      const ownedObservations = await fetchOwnedActiveObservations(currentUser.uid);
+      setAttachmentCandidates(unattachedOwnedObservationsForSet(target, currentUser.uid, ownedObservations));
+    } catch (error) {
+      console.error('Failed to load attachable Observations:', error);
+      setAttachmentCandidates([]);
+      setAttachmentCandidatesError('追加可能な観測を取得できませんでした。ネットワークと認証状態を確認してください。');
+    } finally {
+      setIsAttachmentCandidatesLoading(false);
+    }
+  };
+
+  const handleAttachObservation = async (observationId: string) => {
+    const target = selectedObservation;
+    const candidate = attachmentCandidates.find((entry) => entry.id === observationId);
+    if (!currentUser || !target || !candidate || target.uid !== currentUser.uid) {
+      throw new Error('The selected ObservationSet and attachment candidate are no longer available.');
+    }
+
+    const membership = await attachObservationToSet(
+      target.id,
+      candidate.id,
+      nextMembershipPosition(target),
+    );
+    const nextView = attachObservationToSetView(target, candidate, membership);
+    replaceObservationSetView(nextView);
+    setAttachmentCandidates((previous) => previous.filter((entry) => entry.id !== candidate.id));
+  };
+
+  const handleDetachObservation = async (observationId: string) => {
+    const target = selectedObservation;
+    const detachedObservation = target?.observations.find((entry) => entry.id === observationId);
+    if (!currentUser || !target || !detachedObservation || target.uid !== currentUser.uid) {
+      throw new Error('The selected ObservationSet member is no longer available.');
+    }
+
+    await detachObservationFromSet(target.id, observationId);
+    const nextView = detachObservationFromSetView(target, observationId);
+    replaceObservationSetView(nextView);
+    setAttachmentCandidates((previous) => {
+      const candidates = previous.some((entry) => entry.id === detachedObservation.id)
+        ? previous
+        : [...previous, detachedObservation];
+      return unattachedOwnedObservationsForSet(nextView, currentUser.uid, candidates);
+    });
+  };
+
   // Search & Type Filter Logic
   const filteredObservations = observations.filter((item) => {
     if (typeFilter !== 'all' && item.type !== typeFilter) return false;
@@ -190,7 +264,7 @@ export default function AppPage() {
       const matchSummary = item.summary.toLowerCase().includes(q);
       const matchContent = item.rawContent.toLowerCase().includes(q);
       const matchTags = item.tags?.some((t) => t.toLowerCase().includes(q));
-      const matchObserver = item.observerName.toLowerCase().includes(q);
+      const matchObserver = (item.observerName ?? '').toLowerCase().includes(q);
       return matchTitle || matchSummary || matchContent || matchTags || matchObserver;
     }
     return true;
@@ -358,8 +432,18 @@ export default function AppPage() {
       <ObservationDetailModal
         observation={selectedObservation}
         currentUserId={currentUser?.uid}
-        onClose={() => setSelectedObservation(null)}
+        onClose={() => {
+          setSelectedObservation(null);
+          setAttachmentCandidates([]);
+          setAttachmentCandidatesError(null);
+        }}
         onVisibilityChange={handleVisibilityChange}
+        attachmentCandidates={attachmentCandidates}
+        isAttachmentCandidatesLoading={isAttachmentCandidatesLoading}
+        attachmentCandidatesError={attachmentCandidatesError}
+        onLoadAttachmentCandidates={loadAttachmentCandidates}
+        onAttachObservation={handleAttachObservation}
+        onDetachObservation={handleDetachObservation}
       />
     </div>
   );

@@ -47,6 +47,7 @@ import {
 import {
   membershipProjectionQueryPlan,
   observationSetFeedQueryPlan,
+  ownedObservationPickerQueryPlan,
   type FirestoreQueryPlan,
   type ObservationSetFeedMode,
 } from './firestoreQueryPlan';
@@ -352,6 +353,42 @@ export async function fetchObservations(
     console.warn('Firestore query error, using v2 local cache:', error);
   }
   return filterLocalViews(cacheViews(getLocalCache()), filterMode, currentUserUid, currentUserEmail);
+}
+
+/**
+ * Lists the active canonical Observations that the signed-in owner may attach
+ * to one of their ObservationSets. The query is deliberately owner-scoped;
+ * feed visibility never acts as authority to create a Membership.
+ */
+export async function fetchOwnedActiveObservations(ownerUid: string): Promise<Observation[]> {
+  if (!auth.currentUser || auth.currentUser.uid !== ownerUid) {
+    throw new Error('The signed-in user must own the Observation attachment candidates.');
+  }
+
+  const plan = ownedObservationPickerQueryPlan(ownerUid);
+  if (!plan) return [];
+
+  let cache = getLocalCache();
+  try {
+    const snapshot = await getDocs(query(
+      collection(db, plan.collection),
+      ...toFirestoreQueryConstraints(plan),
+    ));
+    const observations = snapshot.docs.map((snapshotDoc) => (
+      observationFromFirestore(snapshotDoc.id, snapshotDoc.data())
+    ));
+    cache = mergeNormalizedObservationCache(cache, { observations });
+    saveLocalCache(cache);
+  } catch (error) {
+    console.warn('Owner Observation picker query failed, using v2 local cache:', error);
+  }
+
+  return Object.values(cache.observations)
+    .filter((observation) => observation.uid === ownerUid && observation.deletedAt === null)
+    .sort((left, right) => (
+      right.createdAt.localeCompare(left.createdAt)
+      || left.id.localeCompare(right.id)
+    ));
 }
 
 /** Attaches an existing observation to an existing set without duplicating either endpoint. */

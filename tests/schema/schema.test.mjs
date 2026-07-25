@@ -50,15 +50,23 @@ test('blueprint, Firebase configuration, indexes, and rules name the same three 
 
 test('client persistence uses the normalized collections and never writes v1 relationship fields', () => {
   const service = fs.readFileSync(path.join(root, 'src/services/firebaseService.ts'), 'utf8');
+  const appPage = fs.readFileSync(path.join(root, 'src/pages/AppPage.tsx'), 'utf8');
+  const detailModal = fs.readFileSync(path.join(root, 'src/components/ObservationDetailModal.tsx'), 'utf8');
   assert.match(service, /FIRESTORE_COLLECTIONS\.observations/);
   assert.match(service, /FIRESTORE_COLLECTIONS\.observationSets/);
   assert.match(service, /FIRESTORE_COLLECTIONS\.memberships/);
   assert.match(service, /buildObservationSetViews/);
   assert.match(service, /attachObservationToSet/);
   assert.match(service, /detachObservationFromSet/);
+  assert.match(service, /fetchOwnedActiveObservations/);
   assert.match(service, /updateObservation/);
   assert.match(service, /observationSetFeedQueryPlan/);
   assert.match(service, /membershipProjectionQueryPlan/);
+  assert.match(service, /ownedObservationPickerQueryPlan/);
+  assert.match(appPage, /onAttachObservation/);
+  assert.match(appPage, /onDetachObservation/);
+  assert.match(detailModal, /既存の観測をこのセットへ追加/);
+  assert.match(detailModal, /このセットから外す/);
   assert.doesNotMatch(service, /parentSetId/);
   assert.doesNotMatch(service, /observationIds/);
   assert.doesNotMatch(service, /singleObservations/);
