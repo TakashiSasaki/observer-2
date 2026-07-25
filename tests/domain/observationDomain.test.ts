@@ -29,6 +29,8 @@ import {
   type ObservationSetView,
 } from '../../src/types.ts';
 import {
+  createNormalizedCacheSnapshotMetadata,
+  isFreshCompleteNormalizedCacheSnapshot,
   isFreshNormalizedCacheSnapshot,
   NORMALIZED_CACHE_MAX_AGE_MS,
 } from '../../src/domain/cachePolicy.ts';
@@ -88,13 +90,33 @@ test('remote read failures are classified and only transient transport failures 
 
 test('normalized cache freshness is bound to the producing principal and a finite age', () => {
   const now = 10_000;
-  const metadata = { principalUid: 'owner-a', storedAt: now - 1_000 };
+  const metadata = createNormalizedCacheSnapshotMetadata({
+    principalUid: 'owner-a',
+    scope: 'mine-feed',
+    storedAt: now - 1_000,
+    resultLimit: 50,
+    resultCount: 2,
+  });
 
-  assert.equal(isFreshNormalizedCacheSnapshot(metadata, 'owner-a', now), true);
-  assert.equal(isFreshNormalizedCacheSnapshot(metadata, 'owner-b', now), false);
-  assert.equal(isFreshNormalizedCacheSnapshot({ ...metadata, storedAt: now - NORMALIZED_CACHE_MAX_AGE_MS - 1 }, 'owner-a', now), false);
-  assert.equal(isFreshNormalizedCacheSnapshot({ ...metadata, storedAt: now + 1 }, 'owner-a', now), false);
-  assert.equal(isFreshNormalizedCacheSnapshot({ principalUid: 'owner-a', storedAt: 'old' }, 'owner-a', now), false);
+  assert.equal(isFreshNormalizedCacheSnapshot(metadata, 'owner-a', 'mine-feed', now), true);
+  assert.equal(isFreshCompleteNormalizedCacheSnapshot(metadata, 'owner-a', 'mine-feed', 50, now), true);
+  assert.equal(isFreshNormalizedCacheSnapshot(metadata, 'owner-b', 'mine-feed', now), false);
+  assert.equal(isFreshNormalizedCacheSnapshot(metadata, 'owner-a', 'attachment-picker', now), false);
+  assert.equal(isFreshNormalizedCacheSnapshot({ ...metadata, storedAt: now - NORMALIZED_CACHE_MAX_AGE_MS - 1 }, 'owner-a', 'mine-feed', now), false);
+  assert.equal(isFreshNormalizedCacheSnapshot({ ...metadata, storedAt: now + 1 }, 'owner-a', 'mine-feed', now), false);
+  assert.equal(isFreshNormalizedCacheSnapshot({ ...metadata, storedAt: 'old' }, 'owner-a', 'mine-feed', now), false);
+  assert.equal(isFreshCompleteNormalizedCacheSnapshot(metadata, 'owner-a', 'mine-feed', 100, now), false);
+
+  const bounded = createNormalizedCacheSnapshotMetadata({
+    principalUid: 'owner-a',
+    scope: 'mine-feed',
+    storedAt: now - 1_000,
+    resultLimit: 50,
+    resultCount: 50,
+  });
+  assert.equal(bounded.complete, false);
+  assert.equal(isFreshNormalizedCacheSnapshot(bounded, 'owner-a', 'mine-feed', now), true);
+  assert.equal(isFreshCompleteNormalizedCacheSnapshot(bounded, 'owner-a', 'mine-feed', 50, now), false);
 });
 
 test('the in-memory acceptance harness passes M01 through M03 without persistence', () => {
