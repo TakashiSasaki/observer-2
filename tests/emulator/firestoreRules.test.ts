@@ -181,3 +181,25 @@ test('an owner can detach a Membership but cannot physically delete an Observati
   const remainingObservation = await ownerDb.doc(`observations/${ids.observationA}`).get();
   assert.equal(remainingObservation.exists, true);
 });
+
+test('the attachment picker can query only the active Observations owned by its user', async () => {
+  await seed(['observations', ids.observationA], observationDocument(ids.observationA, OWNER_UID));
+  await seed(['observations', ids.observationB], observationDocument(ids.observationB, OTHER_UID));
+
+  const ownerDb = authenticatedFirestore(OWNER_UID);
+  const ownObservations = await assertSucceeds(
+    ownerDb.collection('observations')
+      .where('uid', '==', OWNER_UID)
+      .where('deletedAt', '==', null)
+      .orderBy('createdAt', 'desc')
+      .get(),
+  );
+  assert.equal(ownObservations.docs.length, 1);
+  await assertFails(
+    ownerDb.collection('observations')
+      .where('uid', '==', OTHER_UID)
+      .where('deletedAt', '==', null)
+      .orderBy('createdAt', 'desc')
+      .get(),
+  );
+});

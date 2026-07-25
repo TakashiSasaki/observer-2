@@ -26,7 +26,7 @@ export type FirestoreQueryPlan = {
   limit?: number;
 };
 
-const observationSetFeedOrder: readonly FirestoreQueryOrder[] = [
+const createdAtDescendingOrder: readonly FirestoreQueryOrder[] = [
   { fieldPath: 'createdAt', direction: 'desc' },
 ];
 
@@ -60,8 +60,28 @@ export function observationSetFeedQueryPlan(
   return {
     collection: FIRESTORE_COLLECTIONS.observationSets,
     filters,
-    orderBy: observationSetFeedOrder,
+    orderBy: createdAtDescendingOrder,
     limit: 50,
+  };
+}
+
+/**
+ * Returns the bounded query used by an owner-only attachment picker. It is
+ * deliberately scoped to the authenticated owner's active canonical
+ * Observations; it is not a broad search over observations visible in a feed.
+ */
+export function ownedObservationPickerQueryPlan(
+  ownerUid?: string,
+): FirestoreQueryPlan | null {
+  if (!ownerUid) return null;
+  return {
+    collection: FIRESTORE_COLLECTIONS.observations,
+    filters: [
+      { fieldPath: 'uid', op: '==', value: ownerUid },
+      { fieldPath: 'deletedAt', op: '==', value: null },
+    ],
+    orderBy: createdAtDescendingOrder,
+    limit: 100,
   };
 }
 

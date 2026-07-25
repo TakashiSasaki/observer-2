@@ -7,6 +7,7 @@ import { assertFirestoreDocumentIdentity } from '../../src/domain/firestoreDocum
 import {
   membershipProjectionQueryPlan,
   observationSetFeedQueryPlan,
+  ownedObservationPickerQueryPlan,
   type FirestoreQueryPlan,
 } from '../../src/services/firestoreQueryPlan.ts';
 
@@ -98,6 +99,21 @@ test('the relation projection plan is deterministically ordered and index-backed
   ]);
   assert.equal(plan.limit, undefined);
   assertCompositeIndex(plan);
+});
+
+test('the attachment picker queries only active Observations owned by its principal', () => {
+  const ownerId = 'owner-1';
+  const plan = ownedObservationPickerQueryPlan(ownerId);
+
+  assert.equal(ownedObservationPickerQueryPlan(), null);
+  assert.notEqual(plan, null);
+  assert.deepEqual(plan?.filters, [
+    { fieldPath: 'uid', op: '==', value: ownerId },
+    { fieldPath: 'deletedAt', op: '==', value: null },
+  ]);
+  assert.deepEqual(plan?.orderBy, [{ fieldPath: 'createdAt', direction: 'desc' }]);
+  assert.equal(plan?.limit, 100);
+  assertCompositeIndex(plan!);
 });
 
 test('a Firestore document cannot silently replace its stored canonical ID with the path ID', () => {
