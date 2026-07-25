@@ -26,6 +26,9 @@ export type FirestoreQueryPlan = {
   limit?: number;
 };
 
+export const DEFAULT_OBSERVATION_SET_FEED_LIMIT = 50;
+export const DEFAULT_OWNED_OBSERVATION_PICKER_LIMIT = 100;
+
 const createdAtDescendingOrder: readonly FirestoreQueryOrder[] = [
   { fieldPath: 'createdAt', direction: 'desc' },
 ];
@@ -39,7 +42,7 @@ export function observationSetFeedQueryPlan(
   mode: ObservationSetFeedMode,
   currentUserUid?: string,
   currentUserEmail?: string,
-  resultLimit = 50,
+  resultLimit = DEFAULT_OBSERVATION_SET_FEED_LIMIT,
 ): FirestoreQueryPlan | null {
   const filters: FirestoreQueryFilter[] = [
     { fieldPath: 'deletedAt', op: '==', value: null },
@@ -73,7 +76,7 @@ export function observationSetFeedQueryPlan(
  */
 export function ownedObservationPickerQueryPlan(
   ownerUid?: string,
-  resultLimit = 100,
+  resultLimit = DEFAULT_OWNED_OBSERVATION_PICKER_LIMIT,
 ): FirestoreQueryPlan | null {
   if (!ownerUid) return null;
   return {
