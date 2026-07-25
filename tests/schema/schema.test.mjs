@@ -16,6 +16,15 @@ test('v2 interchange schema uses only normalized top-level entity arrays', () =>
   assert.equal(schema.$defs.ObservationSetMembership.properties.id.description.includes('observationSetId'), true);
 });
 
+test('repository excludes generated patch artifacts', () => {
+  const patchArtifacts = fs.readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /^patch.*\.diff$/i.test(entry.name))
+    .map((entry) => entry.name)
+    .sort();
+
+  assert.deepEqual(patchArtifacts, []);
+});
+
 test('blueprint, Firebase configuration, indexes, and rules name the same three v2 collections', () => {
   const blueprint = readJson('firebase-blueprint.json');
   const firebase = readJson('firebase.json');
