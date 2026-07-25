@@ -18,6 +18,9 @@ const commonEntityKeys = new Set([
   'schemaVersion', 'createdAt', 'updatedAt', 'deletedAt',
 ]);
 const observationSetKeys = new Set([...commonEntityKeys, 'tags']);
+const membershipKeys = new Set([
+  'id', 'observationSetId', 'observationId', 'uid', 'position', 'schemaVersion', 'createdAt',
+]);
 
 type Entity = Observation | ObservationSet;
 
@@ -185,6 +188,9 @@ export function createMembership(input: {
 }
 
 export function assertMembership(membership: ObservationSetMembership): void {
+  for (const key of Object.keys(membership as unknown as Record<string, unknown>)) {
+    if (!membershipKeys.has(key)) fail(`Membership has unsupported field ${key}`);
+  }
   assertString(membership.id, 'Membership.id');
   assertUuidV7(membership.observationSetId, 'Membership.observationSetId');
   assertUuidV7(membership.observationId, 'Membership.observationId');
