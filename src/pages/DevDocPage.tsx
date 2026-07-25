@@ -254,6 +254,79 @@ export default function DevDocPage() {
 
         {activeTab === 'data' && (
           <div className="space-y-5">
+            <Panel title="データモデル型定義" icon={<FileJson className="h-5 w-5 text-indigo-600" />}>
+              <p className="text-sm leading-6 text-slate-600">
+                <code>src/types.ts</code> で定義されている主要な型です。正本エンティティとビュー、キャッシュが明確に分離されています。
+                より詳細な全ての型定義は<a href="/dev/types" className="text-blue-600 hover:underline">こちら（/dev/types）</a>を参照してください。
+              </p>
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <h3 className="text-sm font-bold text-slate-900">Observation</h3>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">
+                    個別の観測データの正本。親SetのIDを一切保持しません。
+                  </p>
+                  <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-50 p-2 text-[10px] text-slate-800 border border-slate-100">
+{`interface Observation {
+  id: string; // Firestore document IDと同一
+  uid: string; // 所有者
+  type: ObservationType;
+  metadata: ObservationMetadata;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null; // 論理削除
+}`}</pre>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <h3 className="text-sm font-bold text-slate-900">ObservationSet</h3>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">
+                    グループ化エンティティの正本。子Observationの埋め込みやID配列を一切保持しません。
+                  </p>
+                  <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-50 p-2 text-[10px] text-slate-800 border border-slate-100">
+{`interface ObservationSet {
+  id: string;
+  uid: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}`}</pre>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <h3 className="text-sm font-bold text-slate-900">ObservationSetMembership</h3>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">
+                    所属関係と順序の正本。多対多の関連テーブルに相当します。
+                  </p>
+                  <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-50 p-2 text-[10px] text-slate-800 border border-slate-100">
+{`interface ObservationSetMembership {
+  id: string; // \`\${setId}__\${observationId}\`
+  observationSetId: string;
+  observationId: string;
+  uid: string;
+  position: number; // 集合内の順序
+  createdAt: string;
+  updatedAt: string;
+}`}</pre>
+                </div>
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 shadow-sm">
+                  <h3 className="text-sm font-bold text-emerald-900">ObservationSetView / NormalizedCache</h3>
+                  <p className="mt-1 text-xs leading-5 text-emerald-800">
+                    これらは実行時の状態であり、直接Firestoreへ保存してはなりません。
+                  </p>
+                  <pre className="mt-2 overflow-x-auto rounded-lg bg-white/60 p-2 text-[10px] text-emerald-900 border border-emerald-200/50">
+{`interface ObservationSetView extends ObservationSet {
+  observations: Observation[];
+  memberships: ObservationSetMembership[];
+}
+
+interface NormalizedObservationCache {
+  observations: Record<string, Observation>;
+  observationSets: Record<string, ObservationSet>;
+  memberships: Record<string, ObservationSetMembership>;
+}`}</pre>
+                </div>
+              </div>
+            </Panel>
+
             <Panel title="正本コレクション" icon={<Database className="h-5 w-5 text-blue-600" />}>
               <div className="overflow-x-auto">
                 <table className="min-w-full border-collapse text-left text-xs">
