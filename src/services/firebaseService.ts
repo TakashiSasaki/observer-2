@@ -122,13 +122,13 @@ function isoTimestamp(value: unknown, field: string, nullable = false): string |
   throw new Error(`${field} must be a Firestore timestamp or an ISO date-time string`);
 }
 
-function toFirestoreTimestamp(iso: string): Timestamp {
+export function toFirestoreTimestamp(iso: string): Timestamp {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) throw new Error(`Invalid ISO date-time: ${iso}`);
   return Timestamp.fromDate(date);
 }
 
-function normalizeOptionalFields<T extends Observation | ObservationSet>(entity: T): Record<string, unknown> {
+export function normalizeOptionalFields<T extends Observation | ObservationSet>(entity: T): Record<string, unknown> {
   return {
     ...entity,
     observerName: entity.observerName ?? null,
@@ -143,7 +143,7 @@ function normalizeOptionalFields<T extends Observation | ObservationSet>(entity:
   };
 }
 
-function membershipToFirestore(membership: ObservationSetMembership): Record<string, unknown> {
+export function membershipToFirestore(membership: ObservationSetMembership): Record<string, unknown> {
   return {
     ...membership,
     createdAt: toFirestoreTimestamp(membership.createdAt),
@@ -332,7 +332,7 @@ function getFreshLocalCacheSnapshot(
   }
 }
 
-function invalidateLocalCacheSnapshots(principalUid: string): void {
+export function invalidateLocalCacheSnapshots(principalUid: string): void {
   const principal = cachePrincipalUid(principalUid);
   for (const scope of ['mine-feed', 'attachment-picker'] as const) {
     try {
@@ -367,7 +367,7 @@ function saveLocalCache(cache: NormalizedObservationCache, principalUid?: string
   }
 }
 
-function makeObservation(draft: ObservationDraft, fallback: Pick<ObservationSet, 'uid' | 'observerName' | 'observerPhoto' | 'visibility' | 'allowedEmails'>, now: string): Observation {
+export function makeObservation(draft: ObservationDraft, fallback: Pick<ObservationSet, 'uid' | 'observerName' | 'observerPhoto' | 'visibility' | 'allowedEmails'>, now: string): Observation {
   const observation: Observation = {
     ...draft,
     id: draft.id ?? generateId(),
@@ -385,7 +385,7 @@ function makeObservation(draft: ObservationDraft, fallback: Pick<ObservationSet,
   return observation;
 }
 
-function makeObservationSet(draft: ObservationSetDraft, imageUrl: string | undefined, now: string): ObservationSet {
+export function makeObservationSet(draft: ObservationSetDraft, imageUrl: string | undefined, now: string): ObservationSet {
   const { observations: _observations, ...setFields } = draft;
   const observationSet: ObservationSet = {
     ...setFields,

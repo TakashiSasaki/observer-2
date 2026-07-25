@@ -173,7 +173,7 @@ service cloud.firestore {
     function canReadMembership(data) {
       // A membership exposes only the relation. Reading it never grants read
       // access to `/observations/{id}`, whose ACL is checked independently.
-      return canReadEntity(
+      return isOwner(data) || canReadEntity(
         get(/databases/$(database)/documents/observationSets/$(data.observationSetId)).data
       );
     }

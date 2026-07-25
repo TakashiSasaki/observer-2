@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Compass, Database, ArrowRight } from 'lucide-react';
+import { Compass, Database, ArrowRight, Wrench } from 'lucide-react';
 
 export default function LandingPage() {
   return (
@@ -24,7 +24,7 @@ export default function LandingPage() {
           <div className="grid sm:grid-cols-2 gap-4">
             <Link
               to="/app"
-              className="flex items-center justify-center gap-2.5 p-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition shadow-md hover:shadow-lg"
+              className="flex items-center justify-center gap-2.5 p-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition shadow-md hover:shadow-lg sm:col-span-2"
             >
               <div className="w-6 h-6 rounded-md bg-white p-0.5 shadow-xs flex items-center justify-center shrink-0">
                 <img src="/icon.svg" alt="App Icon" className="w-full h-full object-contain" />
@@ -39,6 +39,14 @@ export default function LandingPage() {
             >
               <Database className="w-5 h-5 text-slate-500" />
               開発者向けドキュメント
+            </Link>
+
+            <Link
+              to="/dev#tools"
+              className="flex items-center justify-center gap-2.5 p-4 bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200 rounded-xl font-bold transition shadow-sm"
+            >
+              <Wrench className="w-5 h-5 text-slate-500" />
+              ダミーデータ管理
             </Link>
           </div>
         </div>

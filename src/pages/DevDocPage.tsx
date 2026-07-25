@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowLeft,
   BookOpen,
+  Check,
   CheckCircle2,
   Clock3,
   Code2,
+  Copy,
   Database,
   FileJson,
   HardDrive,
@@ -14,10 +16,14 @@ import {
   Server,
   ShieldCheck,
   Workflow,
+  Wrench,
+  Loader2,
+  Trash2,
 } from 'lucide-react';
 import { CURRENT_SCHEMA_VERSION, FIRESTORE_COLLECTIONS } from '../types';
+import { loadDummyData, removeDummyData } from '../utils/dummyDataUtils';
 
-type TabId = 'overview' | 'data' | 'security' | 'exchange' | 'delivery';
+type TabId = 'overview' | 'data' | 'security' | 'exchange' | 'delivery' | 'tools';
 
 const tabs: Array<{ id: TabId; label: string }> = [
   { id: 'overview', label: '概要・サーフェス' },
@@ -25,6 +31,7 @@ const tabs: Array<{ id: TabId; label: string }> = [
   { id: 'security', label: 'ACL・永続化' },
   { id: 'exchange', label: '交換・実行環境' },
   { id: 'delivery', label: 'WP・開発運用' },
+  { id: 'tools', label: '開発ツール' },
 ];
 
 const collectionRows = [
@@ -116,8 +123,176 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function DummyDataPanel() {
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [copied, setCopied] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [logs]);
+
+  const handleProgress = (msg: string) => {
+    setLogs(prev => [...prev, msg]);
+  };
+
+  const handleCopyLogs = async () => {
+    if (logs.length === 0) return;
+    try {
+      await navigator.clipboard.writeText(logs.join('\n'));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy logs:', err);
+    }
+  };
+
+  const handleLoad = async () => {
+    setLoading(true);
+    setMessage(null);
+    setError(null);
+    setLogs([]);
+    try {
+      await loadDummyData(5, handleProgress);
+      setMessage('ダミーデータ（5件のSetと10件のObservation）を作成しました。');
+    } catch (err: any) {
+      setError(err.message || 'ダミーデータの作成に失敗しました。');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setLoading(true);
+    setMessage(null);
+    setError(null);
+    setLogs([]);
+    try {
+      const result = await removeDummyData(handleProgress);
+      setMessage(`ダミーデータを削除しました (Sets: ${result.deletedSets}, Observations: ${result.deletedObservations}, Memberships: ${result.deletedMemberships})。`);
+    } catch (err: any) {
+      setError(err.message || 'ダミーデータの削除に失敗しました。');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderErrorContent = (errorStr: string) => {
+    try {
+      const parsed = JSON.parse(errorStr);
+      if (parsed && typeof parsed === 'object' && parsed.error) {
+        return (
+          <div className="space-y-1.5">
+            <div className="font-bold">{parsed.error}</div>
+            <div className="rounded bg-rose-100/80 p-2 font-mono text-[11px] text-rose-900 space-y-0.5">
+              <div><span className="font-semibold">Operation:</span> {parsed.operationType}</div>
+              {parsed.path && <div><span className="font-semibold">Path:</span> {parsed.path}</div>}
+              {parsed.authInfo?.userId && <div><span className="font-semibold">User ID:</span> {parsed.authInfo.userId}</div>}
+            </div>
+          </div>
+        );
+      }
+    } catch {
+      // Not JSON
+    }
+    return <span>{errorStr}</span>;
+  };
+
+  return (
+    <Panel title="ダミーデータ管理" icon={<Wrench className="h-5 w-5 text-indigo-600" />}>
+      <p className="text-sm leading-6 text-slate-600">
+        開発・テスト用のダミーデータを生成・削除します。生成されるデータは <code>metadata.isDummyData = true</code> を持ち、削除時はこのフラグを元に論理削除（Membershipは物理削除）を行います。
+      </p>
+
+      {message && (
+        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs leading-6 text-emerald-950">
+          <CheckCircle2 className="mb-1 inline-block h-4 w-4 text-emerald-600" /> {message}
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs leading-6 text-rose-950">
+          <AlertTriangle className="mb-1 inline-block h-4 w-4 text-rose-600 align-top mr-1" />
+          <div className="inline-block">{renderErrorContent(error)}</div>
+        </div>
+      )}
+
+      <div className="mt-5 flex flex-wrap gap-3">
+        <button
+          type="button"
+          disabled={loading}
+          onClick={handleLoad}
+          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-indigo-700 disabled:opacity-50"
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+          ダミーデータロード
+        </button>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={handleDelete}
+          className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-rose-700 disabled:opacity-50"
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+          ダミーデータ削除
+        </button>
+      </div>
+
+      {logs.length > 0 && (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-950 p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-xs font-bold text-slate-400">実行ログ</h3>
+            <button
+              onClick={handleCopyLogs}
+              className="inline-flex items-center gap-1.5 rounded bg-slate-800 px-2.5 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-700 hover:text-white"
+            >
+              {copied ? (
+                <>
+                  <Check className="h-3.5 w-3.5 text-emerald-400" />
+                  <span className="text-emerald-400">コピーしました</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3.5 w-3.5" />
+                  <span>ログをコピー</span>
+                </>
+              )}
+            </button>
+          </div>
+          <div ref={scrollRef} className="max-h-60 overflow-y-auto pr-2">
+            {logs.map((log, i) => (
+              <div key={i} className="font-mono text-xs leading-5 text-emerald-300 break-all">
+                {log}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 export default function DevDocPage() {
-  const [activeTab, setActiveTab] = useState<TabId>('overview');
+  const [activeTab, setActiveTab] = useState<TabId>(() => {
+    const hash = window.location.hash.replace('#', '') as TabId;
+    return tabs.some(t => t.id === hash) ? hash : 'overview';
+  });
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '') as TabId;
+      if (tabs.some(t => t.id === hash)) {
+        setActiveTab(hash);
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   return (
     <main className="min-h-screen bg-slate-100 px-3 py-6 text-slate-800 sm:px-8">
@@ -164,7 +339,10 @@ export default function DevDocPage() {
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => {
+                window.location.hash = tab.id;
+                setActiveTab(tab.id);
+              }}
               className={`whitespace-nowrap rounded-lg px-3 py-2 text-xs font-bold transition sm:px-4 ${
                 activeTab === tab.id
                   ? 'bg-slate-900 text-white shadow-sm'
@@ -616,6 +794,12 @@ npm run test:firestore:emulator  # Java 21`}</pre>
                 文書と実行可能contractが矛盾した場合は、都合のよい一方を選ばず、同じ変更で整合させます。
               </p>
             </Panel>
+          </div>
+        )}
+
+        {activeTab === 'tools' && (
+          <div className="space-y-5">
+            <DummyDataPanel />
           </div>
         )}
       </div>
