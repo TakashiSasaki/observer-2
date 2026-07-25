@@ -195,18 +195,30 @@ test('remote reads use typed failures, principal-scoped cache, and current-reque
   const remotePolicy = fs.readFileSync(path.join(root, 'src/domain/remoteReadPolicy.ts'), 'utf8');
   const cachePolicy = fs.readFileSync(path.join(root, 'src/domain/cachePolicy.ts'), 'utf8');
   const appPage = fs.readFileSync(path.join(root, 'src/pages/AppPage.tsx'), 'utf8');
+  const detailModal = fs.readFileSync(path.join(root, 'src/components/ObservationDetailModal.tsx'), 'utf8');
   const specification = fs.readFileSync(path.join(root, 'docs/application-specification.md'), 'utf8');
 
   assert.match(remotePolicy, /class RemoteReadError/);
   assert.match(remotePolicy, /isRecoverableRemoteReadError/);
   assert.match(cachePolicy, /NORMALIZED_CACHE_MAX_AGE_MS/);
+  assert.match(cachePolicy, /isFreshCompleteNormalizedCacheSnapshot/);
+  assert.match(cachePolicy, /resultLimit/);
+  assert.match(cachePolicy, /resultCount/);
   assert.match(service, /LOCAL_STORAGE_KEY_PREFIX/);
+  assert.match(service, /LOCAL_STORAGE_SNAPSHOT_KEY_PREFIX/);
+  assert.match(service, /saveLocalCacheSnapshot/);
+  assert.match(service, /invalidateLocalCacheSnapshots/);
   assert.match(service, /remote-required/);
   assert.match(service, /filterMode === 'mine'/);
   assert.match(service, /permission-denied.*not-found/);
   assert.match(appPage, /loadSequence/);
   assert.match(appPage, /requestId !== loadSequence\.current/);
+  assert.match(appPage, /attachmentCandidatesErrorMessage/);
+  assert.match(appPage, /isRemoteReadError/);
+  assert.match(detailModal, /再試行/);
   assert.match(specification, /five-minute freshness/);
+  assert.match(specification, /resultLimit/);
+  assert.match(specification, /exact-limit/);
 });
 
 test('the /test surface is an in-memory acceptance harness and is not a Firestore write path', () => {

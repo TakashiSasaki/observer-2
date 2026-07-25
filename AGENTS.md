@@ -73,6 +73,9 @@ status ledger. See `audit/m2m/README.md`.
     authorization source for shared or public feeds.
 14. A remote-required operation, including interchange export and import
     dry-run, must fail rather than use a possibly incomplete local cache.
+15. A cache fallback snapshot must be bound to its feed scope and principal.
+    A bounded query whose result count reaches its limit is incomplete and
+    cannot be used as fallback; successful mutations invalidate such snapshots.
 
 ## Forbidden legacy behavior
 

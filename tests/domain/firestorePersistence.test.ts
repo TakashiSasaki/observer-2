@@ -5,6 +5,8 @@ import test from 'node:test';
 import { isDeepStrictEqual } from 'node:util';
 import { assertFirestoreDocumentIdentity } from '../../src/domain/firestoreDocumentIdentity.ts';
 import {
+  DEFAULT_OBSERVATION_SET_FEED_LIMIT,
+  DEFAULT_OWNED_OBSERVATION_PICKER_LIMIT,
   membershipProjectionQueryPlan,
   observationSetFeedQueryPlan,
   ownedObservationPickerQueryPlan,
@@ -63,7 +65,7 @@ test('all observation-set feed plans are bounded, scoped, and covered by indexes
 
   for (const plan of [mine, shared, authenticated, publicFeed]) {
     assert.notEqual(plan, null);
-    assert.equal(plan.limit, 50);
+    assert.equal(plan.limit, DEFAULT_OBSERVATION_SET_FEED_LIMIT);
     assert.deepEqual(plan.orderBy, [{ fieldPath: 'createdAt', direction: 'desc' }]);
     assertCompositeIndex(plan);
   }
@@ -116,7 +118,7 @@ test('the attachment picker queries only active Observations owned by its princi
     { fieldPath: 'deletedAt', op: '==', value: null },
   ]);
   assert.deepEqual(plan?.orderBy, [{ fieldPath: 'createdAt', direction: 'desc' }]);
-  assert.equal(plan?.limit, 100);
+  assert.equal(plan?.limit, DEFAULT_OWNED_OBSERVATION_PICKER_LIMIT);
   assert.equal(ownedObservationPickerQueryPlan(ownerId, 1000)?.limit, 1000);
   assertCompositeIndex(plan!);
 });

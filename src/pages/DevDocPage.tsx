@@ -65,12 +65,13 @@ const workPackageRows = [
   { id: 'WP04', scope: 'Rules・Emulator', status: 'implemented', remaining: '最終treeでもJDK 21検証' },
   { id: 'WP05', scope: 'UI', status: 'implemented', remaining: 'M01〜M03とcomposite操作の手動受入' },
   { id: 'WP06', scope: '交換形式2.0.0', status: 'partial', remaining: 'Firestore import commitの方針と実装' },
-  { id: 'WP07', scope: 'legacy除去・最終検証', status: 'partial', remaining: 'reconciliation・手動受入・closeout' },
+  { id: 'WP07', scope: 'legacy除去・最終検証', status: 'partial', remaining: 'bounded readのページング・実Firestore/Auth受入・closeout' },
 ];
 
 const sourceRows = [
   ['型', 'src/types.ts'],
   ['ドメイン不変条件', 'src/domain/observationDomain.ts'],
+  ['cache scope/freshness', 'src/domain/cachePolicy.ts'],
   ['交換意味検証', 'src/domain/observationInterchange.ts'],
   ['交換構造', 'schemas/observation-interchange.schema.json'],
   ['Firestore操作', 'src/services/firebaseService.ts'],
@@ -245,7 +246,7 @@ export default function DevDocPage() {
                   <li>versioned external API <code>/api/vN</code>。</li>
                   <li>Cloud Storage upload・cleanup・URL lifecycle。</li>
                   <li>Observation更新・削除およびMembership並べ替えの完全なUI。</li>
-                  <li>complete-snapshot/reconciliation markerとbounded readのpage処理。</li>
+                  <li>bounded readのページング（上限到達時はfallback不可）。</li>
                 </ul>
               </Panel>
             </div>
@@ -405,7 +406,8 @@ interface NormalizedObservationCache {
                   <li>画像は最大1024×768、quality 0.85のWebP data URLへ変換。</li>
                   <li><code>imagePath</code>は将来のStorage path用。uploadは未実装。</li>
                   <li>cache keyはprincipal別の <code>observer-2.normalized-cache.v2.&lt;uid&gt;</code>。</li>
-                  <li>cache metadataでprincipalと保存時刻を確認し、5分を超えたfallbackは使わない。</li>
+                  <li>mine-feedとattachment-pickerを別snapshotとして保存し、principal・保存時刻・query limit・件数・completeを検証する。</li>
+                  <li>bounded queryがlimit件に達したsnapshotは不完全としてfallbackに使わない。5分を超えたsnapshotも使わない。</li>
                   <li>cacheも3種類のentity mapで、Viewを保存しない。</li>
                   <li>Firestoreの1 MiB制限に対する画像サイズ保証は未実装。</li>
                 </ul>
@@ -482,7 +484,7 @@ interface NormalizedObservationCache {
                 ))}
               </div>
               <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-6 text-amber-950">
-                <strong>残作業:</strong> complete-snapshot/reconciliation marker、bounded readのページング、attachment-pickerの専用エラー表示、手動受入れ。
+                <strong>残作業:</strong> bounded readのページング、実Firestore/Authでの手動受入れ。
               </div>
             </Panel>
           </div>
@@ -594,9 +596,9 @@ npm run test:firestore:emulator  # Java 21`}</pre>
               </Panel>
               <Panel title="推奨する残りの順序" icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}>
                 <ol className="list-decimal space-y-2 pl-5 text-sm leading-6 text-slate-600">
-                  <li>ownership・conflict-safe Firestore import。</li>
-                  <li>remote errorとcacheのhardening。</li>
-                  <li>M01〜M03と<code>/test</code>受入れ。</li>
+                  <li>Firestore importのownership・conflict・atomicity・receipt方針。</li>
+                  <li>bounded readのページングとfallback境界の最終確認。</li>
+                  <li>実Firestore/AuthでのM01〜M03と<code>/test</code>受入れ。</li>
                   <li>累積台帳、全CI、最終tree closeout。</li>
                 </ol>
               </Panel>

@@ -240,8 +240,10 @@ views after reading them.
 ## 9. Remote read and cache policy
 
 The normalized records use a principal-scoped key of the form
-`observer-2.normalized-cache.v2.<encoded-principal-uid>`, with a separate
-metadata key for the producing principal and last snapshot time.
+`observer-2.normalized-cache.v2.<encoded-principal-uid>`. Eligible fallback
+snapshots use separate scope keys for `mine-feed` and `attachment-picker` and
+`principalUid`, `scope`, `storedAt`, `resultLimit`, `resultCount`, and `complete`
+metadata.
 
 - A successful remote result is authoritative, including an empty array.
 - A successful empty result must not resurrect stale cached records.
@@ -257,16 +259,20 @@ metadata key for the producing principal and last snapshot time.
   read so stale ACLs cannot expose revoked records.
 - Exchange export and import dry-run require remote reads; an incomplete cache
   cannot be exported or used as the comparison baseline.
+- A bounded query is complete only when its result count is below its limit. An
+  exact-limit result is marked incomplete and is not used as a fallback because
+  pagination is not implemented yet.
+- Successful entity mutations invalidate both owner snapshot scopes.
 
 Current limitations:
 
-- the cache has freshness metadata but no complete-snapshot/reconciliation
-  marker;
-- attachment-picker failures still share a generic UI error path except for
-  explicit integrity violations;
+- pagination beyond the bounded query limit is not implemented; an exact-limit
+  snapshot therefore cannot be used during a transient remote failure;
+- attachment-picker failures are classified into integrity, authorization,
+  authentication, query, quota, and transient-read messages and expose retry;
 - permission-denied or not-found observation endpoints are redacted as an
   expected consequence of independent ACLs, while membership-query or
-  transport failures abort the projection; pagination remains future work.
+  transport failures abort the projection.
 
 These limitations are tracked in `docs/work-packages.md`.
 

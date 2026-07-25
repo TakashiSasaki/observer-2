@@ -45,7 +45,9 @@ import {
   mergeNormalizedObservationCache,
 } from '../domain/normalizedObservationCache';
 import {
-  isFreshNormalizedCacheSnapshot,
+  createNormalizedCacheSnapshotMetadata,
+  isFreshCompleteNormalizedCacheSnapshot,
+  type NormalizedCacheSnapshotScope,
 } from '../domain/cachePolicy';
 import {
   classifyRemoteReadError,
@@ -67,6 +69,8 @@ import {
   membershipProjectionQueryPlan,
   observationSetFeedQueryPlan,
   ownedObservationPickerQueryPlan,
+  DEFAULT_OBSERVATION_SET_FEED_LIMIT,
+  DEFAULT_OWNED_OBSERVATION_PICKER_LIMIT,
   type FirestoreQueryPlan,
   type ObservationSetFeedMode,
 } from './firestoreQueryPlan';
@@ -74,7 +78,8 @@ import { processImageToWebP } from '../utils/imageUtils';
 import { generateId } from '../utils/idUtils';
 
 const LOCAL_STORAGE_KEY_PREFIX = 'observer-2.normalized-cache.v2.';
-const LOCAL_STORAGE_METADATA_KEY_PREFIX = 'observer-2.normalized-cache-meta.v2.';
+const LOCAL_STORAGE_SNAPSHOT_KEY_PREFIX = 'observer-2.normalized-snapshot.v2.';
+const LOCAL_STORAGE_SNAPSHOT_METADATA_KEY_PREFIX = 'observer-2.normalized-snapshot-meta.v2.';
 const MAX_NEW_MEMBERSHIPS_PER_CLIENT_BATCH = 9;
 type RemoteReadMode = 'cache-fallback' | 'remote-required';
 
@@ -203,14 +208,73 @@ function cacheStorageKey(prefix: string, principalUid?: string): string {
   return `${prefix}${encodeURIComponent(cachePrincipalUid(principalUid))}`;
 }
 
-function hasFreshLocalCacheSnapshot(principalUid?: string): boolean {
+function cacheSnapshotStorageKey(prefix: string, principalUid: string | undefined, scope: NormalizedCacheSnapshotScope): string {
+  return `${prefix}${encodeURIComponent(cachePrincipalUid(principalUid))}.${scope}`;
+}
+
+function saveLocalCacheSnapshot(
+  scope: NormalizedCacheSnapshotScope,
+  cache: NormalizedObservationCache,
+  principalUid: string,
+  resultLimit: number,
+  resultCount: number,
+): void {
+  try {
+    assertNormalizedObservationCache(cache);
+    const metadata = createNormalizedCacheSnapshotMetadata({
+      principalUid,
+      scope,
+      resultLimit,
+      resultCount,
+    });
+    localStorage.setItem(
+      cacheSnapshotStorageKey(LOCAL_STORAGE_SNAPSHOT_KEY_PREFIX, principalUid, scope),
+      JSON.stringify(cache),
+    );
+    localStorage.setItem(
+      cacheSnapshotStorageKey(LOCAL_STORAGE_SNAPSHOT_METADATA_KEY_PREFIX, principalUid, scope),
+      JSON.stringify(metadata),
+    );
+  } catch (error) {
+    console.warn('LocalStorage snapshot save failed:', error);
+  }
+}
+
+function getFreshLocalCacheSnapshot(
+  scope: NormalizedCacheSnapshotScope,
+  principalUid: string,
+  minimumResultLimit: number,
+): NormalizedObservationCache | undefined {
   const principal = cachePrincipalUid(principalUid);
   try {
-    const raw = localStorage.getItem(cacheStorageKey(LOCAL_STORAGE_METADATA_KEY_PREFIX, principal));
-    if (!raw) return false;
-    return isFreshNormalizedCacheSnapshot(JSON.parse(raw), principal);
+    const metadataRaw = localStorage.getItem(
+      cacheSnapshotStorageKey(LOCAL_STORAGE_SNAPSHOT_METADATA_KEY_PREFIX, principal, scope),
+    );
+    if (!metadataRaw) return undefined;
+    const metadata = JSON.parse(metadataRaw) as unknown;
+    if (!isFreshCompleteNormalizedCacheSnapshot(metadata, principal, scope, minimumResultLimit)) return undefined;
+    const cacheRaw = localStorage.getItem(
+      cacheSnapshotStorageKey(LOCAL_STORAGE_SNAPSHOT_KEY_PREFIX, principal, scope),
+    );
+    if (!cacheRaw) return undefined;
+    const cache = JSON.parse(cacheRaw) as unknown;
+    assertNormalizedObservationCache(cache);
+    return cache;
   } catch {
-    return false;
+    return undefined;
+  }
+}
+
+function invalidateLocalCacheSnapshots(principalUid: string): void {
+  const principal = cachePrincipalUid(principalUid);
+  for (const scope of ['mine-feed', 'attachment-picker'] as const) {
+    try {
+      localStorage.removeItem(cacheSnapshotStorageKey(LOCAL_STORAGE_SNAPSHOT_KEY_PREFIX, principal, scope));
+      localStorage.removeItem(cacheSnapshotStorageKey(LOCAL_STORAGE_SNAPSHOT_METADATA_KEY_PREFIX, principal, scope));
+    } catch {
+      // localStorage is an optional optimization; failed invalidation cannot
+      // turn a remote write into a client-visible failure.
+    }
   }
 }
 
@@ -231,10 +295,6 @@ function saveLocalCache(cache: NormalizedObservationCache, principalUid?: string
     assertNormalizedObservationCache(cache);
     const principal = cachePrincipalUid(principalUid);
     localStorage.setItem(cacheStorageKey(LOCAL_STORAGE_KEY_PREFIX, principal), JSON.stringify(cache));
-    localStorage.setItem(
-      cacheStorageKey(LOCAL_STORAGE_METADATA_KEY_PREFIX, principal),
-      JSON.stringify({ principalUid: principal, storedAt: Date.now() }),
-    );
   } catch (error) {
     console.warn('LocalStorage save failed:', error);
   }
@@ -287,6 +347,18 @@ function filterLocalViews(views: ObservationSetView[], filterMode: ObservationSe
       return Boolean(currentUserEmail && view.visibility === 'shared' && view.allowedEmails.includes(currentUserEmail));
     }
     return view.visibility === 'public';
+  });
+}
+
+function uniqueRecords<T extends { id: string }>(records: Iterable<T>): T[] {
+  return [...new Map([...records].map((record) => [record.id, record])).values()];
+}
+
+function cacheFromViews(views: ObservationSetView[]): NormalizedObservationCache {
+  return mergeNormalizedObservationCache(emptyNormalizedObservationCache(), {
+    observationSets: views,
+    observations: uniqueRecords(views.flatMap((view) => view.observations)),
+    memberships: uniqueRecords(views.flatMap((view) => view.memberships)),
   });
 }
 
@@ -399,6 +471,7 @@ export async function createObservation(draft: ObservationSetDraft): Promise<Obs
 
   const updatedCache = mergeNormalizedObservationCache(getLocalCache(observationSet.uid), { observationSets: [observationSet], observations, memberships });
   saveLocalCache(updatedCache, observationSet.uid);
+  invalidateLocalCacheSnapshots(observationSet.uid);
   return buildObservationSetViews({ observationSets: [observationSet], observations, memberships })[0];
 }
 
@@ -411,16 +484,26 @@ export async function fetchObservations(
   readMode: RemoteReadMode = 'cache-fallback',
 ): Promise<ObservationSetView[]> {
   const principalUid = currentUserUid ?? auth.currentUser?.uid;
+  const effectiveResultLimit = resultLimit ?? DEFAULT_OBSERVATION_SET_FEED_LIMIT;
   let remoteViews: ObservationSetView[] | undefined;
   try {
-    const views = await fetchFirestoreViews(filterMode, currentUserUid, currentUserEmail, resultLimit);
+    const views = await fetchFirestoreViews(filterMode, currentUserUid, currentUserEmail, effectiveResultLimit);
     remoteViews = views;
     const cache = mergeNormalizedObservationCache(getLocalCache(principalUid), {
       observationSets: views,
-      observations: views.flatMap((view) => view.observations),
-      memberships: views.flatMap((view) => view.memberships),
+      observations: uniqueRecords(views.flatMap((view) => view.observations)),
+      memberships: uniqueRecords(views.flatMap((view) => view.memberships)),
     });
     saveLocalCache(cache, principalUid);
+    if (filterMode === 'mine' && principalUid) {
+      saveLocalCacheSnapshot(
+        'mine-feed',
+        cacheFromViews(views),
+        principalUid,
+        effectiveResultLimit,
+        views.length,
+      );
+    }
   } catch (error) {
     if (isRemoteDataIntegrityError(error)) throw error;
     const classified = classifyRemoteReadError(error);
@@ -431,13 +514,13 @@ export async function fetchObservations(
   }
   return selectRemoteResult(
     remoteViews,
-    () => (
-      filterMode === 'mine'
-      && Boolean(principalUid)
-      && hasFreshLocalCacheSnapshot(principalUid)
-        ? filterLocalViews(cacheViews(getLocalCache(principalUid)), filterMode, currentUserUid, currentUserEmail)
-        : []
-    ),
+    () => {
+      if (filterMode !== 'mine' || !principalUid) return [];
+      const snapshot = getFreshLocalCacheSnapshot('mine-feed', principalUid, effectiveResultLimit);
+      return snapshot
+        ? filterLocalViews(cacheViews(snapshot), filterMode, currentUserUid, currentUserEmail)
+        : [];
+    },
   );
 }
 
@@ -455,7 +538,8 @@ export async function fetchOwnedActiveObservations(
     throw new Error('The signed-in user must own the Observation attachment candidates.');
   }
 
-  const plan = ownedObservationPickerQueryPlan(ownerUid, resultLimit);
+  const effectiveResultLimit = resultLimit ?? DEFAULT_OWNED_OBSERVATION_PICKER_LIMIT;
+  const plan = ownedObservationPickerQueryPlan(ownerUid, effectiveResultLimit);
   if (!plan) return [];
 
   let cache = getLocalCache(ownerUid);
@@ -470,6 +554,13 @@ export async function fetchOwnedActiveObservations(
     ));
     cache = mergeNormalizedObservationCache(cache, { observations: remoteObservations });
     saveLocalCache(cache, ownerUid);
+    saveLocalCacheSnapshot(
+      'attachment-picker',
+      mergeNormalizedObservationCache(emptyNormalizedObservationCache(), { observations: remoteObservations }),
+      ownerUid,
+      effectiveResultLimit,
+      remoteObservations.length,
+    );
   } catch (error) {
     if (isRemoteDataIntegrityError(error)) throw error;
     const classified = classifyRemoteReadError(error);
@@ -481,7 +572,9 @@ export async function fetchOwnedActiveObservations(
 
   const observations = selectRemoteResult(
     remoteObservations,
-    () => (hasFreshLocalCacheSnapshot(ownerUid) ? Object.values(cache.observations) : []),
+    () => Object.values(
+      getFreshLocalCacheSnapshot('attachment-picker', ownerUid, effectiveResultLimit)?.observations ?? {},
+    ),
   );
   return observations
     .filter((observation) => observation.uid === ownerUid && observation.deletedAt === null)
@@ -496,10 +589,6 @@ type OwnedCanonicalRecords = {
   observationSets: ObservationSet[];
   memberships: ObservationSetMembership[];
 };
-
-function uniqueRecords<T extends { id: string }>(records: Iterable<T>): T[] {
-  return [...new Map([...records].map((record) => [record.id, record])).values()];
-}
 
 /**
  * Reads the owner's current canonical records for the no-write exchange path.
@@ -607,6 +696,7 @@ export async function attachObservationToSet(observationSetId: string, observati
 
   const cache = mergeNormalizedObservationCache(getLocalCache(auth.currentUser.uid), { observationSets: [observationSet], observations: [observation], memberships: [membership] });
   saveLocalCache(cache, auth.currentUser.uid);
+  invalidateLocalCacheSnapshots(auth.currentUser.uid);
   return membership;
 }
 
@@ -620,6 +710,7 @@ export async function detachObservationFromSet(observationSetId: string, observa
 
   const cache = detachMembershipFromNormalizedObservationCache(getLocalCache(auth.currentUser.uid), observationSetId, observationId);
   saveLocalCache(cache, auth.currentUser.uid);
+  invalidateLocalCacheSnapshots(auth.currentUser.uid);
 }
 
 /**
@@ -670,6 +761,7 @@ export async function updateObservation(
 
   cache.observations[id] = next;
   saveLocalCache(cache, auth.currentUser.uid);
+  invalidateLocalCacheSnapshots(auth.currentUser.uid);
 }
 
 /** Changes only the set ACL. Observation ACLs remain independent by design. */
@@ -695,6 +787,7 @@ export async function updateObservationSetVisibility(
     cache.observationSets[id] = { ...current, visibility: newVisibility, allowedEmails: sanitizedAllowedEmails, updatedAt: now };
     saveLocalCache(cache, auth.currentUser.uid);
   }
+  invalidateLocalCacheSnapshots(auth.currentUser.uid);
 }
 
 /** Soft-deletes a set only; memberships and observations are intentionally retained. */
@@ -714,6 +807,7 @@ export async function softDeleteObservationSet(id: string): Promise<void> {
     cache.observationSets[id] = { ...current, deletedAt: now, updatedAt: now };
     saveLocalCache(cache, auth.currentUser.uid);
   }
+  invalidateLocalCacheSnapshots(auth.currentUser.uid);
 }
 
 /** Soft-deletes an observation only; it does not alter its sets or memberships. */
@@ -733,4 +827,5 @@ export async function softDeleteObservation(id: string): Promise<void> {
     cache.observations[id] = { ...current, deletedAt: now, updatedAt: now };
     saveLocalCache(cache, auth.currentUser.uid);
   }
+  invalidateLocalCacheSnapshots(auth.currentUser.uid);
 }

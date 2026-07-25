@@ -34,7 +34,7 @@ One **iteration** in the estimate means one bounded change cycle:
 | WP04 | Security Rules and external Emulator tests | **implemented** | Rules enforce owner/shape/relation/time invariants; JDK 21 Actions passed | Preserve emulator pass for final release tree |
 | WP05 | UI | **implemented** | Existing-observation picker, attach, membership-only detach, set ACL and soft delete, explicit composite-capture mode | Execute M01–M03 and verify multi-observation usability |
 | WP06 | Interchange 2.0.0 and v1 policy | **partial** | JSON Schema, semantic codec, deterministic round-trip, owner export/download, no-write import dry-run, collision/ownership report, size limits | Decide and implement authorized Firestore import commit path |
-| WP07 | Legacy removal and final validation | **partial** | v1 write/read removal, fresh-empty read policy, strict remote integrity error, typed read failures, principal-scoped five-minute cache, no-partial relation reads, visible UI error state, hardened Rules | Complete-snapshot/reconciliation policy, manual acceptance, final acceptance record |
+| WP07 | Legacy removal and final validation | **partial** | v1 write/read removal, fresh-empty read policy, strict remote integrity error, typed read failures, scope-bound complete snapshots, principal-scoped five-minute cache, no-partial relation reads, visible UI error state, hardened Rules | Real-surface manual acceptance, pagination beyond bounded reads, final acceptance record |
 
 The implementation evidence above does not mean the entire application roadmap
 is complete. It evaluates the WP00–WP07 many-to-many data-model program only.
@@ -60,6 +60,8 @@ The following behaviors have automated coverage:
   deletion counts, collision classification, and practical limits;
 - successful empty reads overriding stale cache;
 - malformed remote data surfacing as `RemoteDataIntegrityError`.
+- bounded-read snapshots record scope, principal, limit, result count, and
+  completeness; exact-limit snapshots cannot be used as fallback;
 
 ## 4. Remaining work, in recommended order
 
@@ -117,8 +119,7 @@ Completed in the current change:
 
 Remaining in this package:
 
-- complete-snapshot/reconciliation markers for bounded or paginated reads;
-- a more specific attachment-picker error presentation;
+- pagination beyond the bounded query limit;
 - final acceptance on the real application surfaces.
 
 ### Iteration 5 — manual WP05 acceptance and `/test`

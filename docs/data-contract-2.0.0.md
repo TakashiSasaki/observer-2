@@ -297,13 +297,25 @@ Remote selection policy:
   aborted, and cancelled failures are recoverable; permission, not-found,
   failed-precondition, quota, and unknown failures are not silently hidden.
 
-The cache is principal-scoped and its metadata expires after five minutes. It is
-eligible as a fallback only for the owner's `mine` feed and attachment picker.
-Shared, authenticated, and public feeds do not use stale cache fallback because
-cached ACLs are not an authorization source. Interchange export and import
-dry-run require remote reads and therefore cannot silently operate on an
-incomplete cache. The cache is not a full synchronized database or migration
-source.
+The cache is principal-scoped and its metadata expires after five minutes. A
+fallback snapshot is stored separately for each eligible scope:
+
+- `mine-feed` — the owner set-feed query and its reconstructed relations;
+- `attachment-picker` — the owner-only active-Observation query.
+
+Each snapshot metadata record contains `principalUid`, `scope`, `storedAt`,
+`resultLimit`, `resultCount`, and `complete`. A successful bounded read is
+complete only when `resultCount < resultLimit`; reaching the limit is treated as
+incomplete because more records may exist. A fallback request may use only a
+fresh complete snapshot for the same scope and principal whose recorded limit
+is at least the requested limit. There is no pagination yet, so an incomplete
+bounded read fails rather than presenting an unverified partial snapshot.
+
+Successful entity mutations invalidate both owner snapshot scopes. Shared,
+authenticated, and public feeds do not use stale cache fallback because cached
+ACLs are not an authorization source. Interchange export and import dry-run
+require remote reads and therefore cannot silently operate on an incomplete
+cache. The cache is not a full synchronized database or migration source.
 
 ## 8. Interchange bundle
 
