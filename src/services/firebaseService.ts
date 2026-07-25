@@ -737,36 +737,49 @@ export async function dryRunOwnedObservationInterchangeImport(
 /** Attaches an existing observation to an existing set without duplicating either endpoint. */
 export async function attachObservationToSet(observationSetId: string, observationId: string, position: number): Promise<ObservationSetMembership> {
   if (!auth.currentUser) throw new Error('Authentication required');
+  const uid = auth.currentUser.uid;
 
-  const [setSnapshot, observationSnapshot] = await Promise.all([
-    getDoc(doc(db, FIRESTORE_COLLECTIONS.observationSets, observationSetId)),
-    getDoc(doc(db, FIRESTORE_COLLECTIONS.observations, observationId)),
-  ]);
-  if (!setSnapshot.exists() || !observationSnapshot.exists()) throw new Error('Membership endpoint not found.');
+  const setRef = doc(db, FIRESTORE_COLLECTIONS.observationSets, observationSetId);
+  const obsRef = doc(db, FIRESTORE_COLLECTIONS.observations, observationId);
+  const membershipId = membershipDocumentId(observationSetId, observationId);
+  const membershipRef = doc(db, FIRESTORE_COLLECTIONS.memberships, membershipId);
 
-  const observationSet = observationSetFromFirestore(setSnapshot.id, setSnapshot.data());
-  const observation = observationFromFirestore(observationSnapshot.id, observationSnapshot.data());
-  if (observationSet.uid !== auth.currentUser.uid || observation.uid !== auth.currentUser.uid) {
-    throw new Error('Only the shared endpoint owner may create a membership.');
-  }
-  const membership = createMembership({
-    observationSet,
-    observation,
-    position,
-    createdAt: new Date().toISOString(),
-  });
+  const membership = await runTransaction(db, async (transaction) => {
+    const [setSnapshot, observationSnapshot, existing] = await Promise.all([
+      transaction.get(setRef),
+      transaction.get(obsRef),
+      transaction.get(membershipRef),
+    ]);
 
-  const membershipRef = doc(db, FIRESTORE_COLLECTIONS.memberships, membership.id);
-  await runTransaction(db, async (transaction) => {
-    const existing = await transaction.get(membershipRef);
+    if (!setSnapshot.exists() || !observationSnapshot.exists()) throw new Error('Membership endpoint not found.');
     if (existing.exists()) throw new Error('This observation is already attached to the set.');
-    transaction.set(membershipRef, membershipToFirestore(membership));
+
+    const observationSet = observationSetFromFirestore(setSnapshot.id, setSnapshot.data());
+    const observation = observationFromFirestore(observationSnapshot.id, observationSnapshot.data());
+
+    if (observationSet.uid !== uid || observation.uid !== uid) {
+      throw new Error('Only the shared endpoint owner may create a membership.');
+    }
+
+    const newMembership = createMembership({
+      observationSet,
+      observation,
+      position,
+      createdAt: new Date().toISOString(),
+    });
+
+    transaction.set(membershipRef, membershipToFirestore(newMembership));
+    return { newMembership, observationSet, observation };
   });
 
-  const cache = mergeNormalizedObservationCache(getLocalCache(auth.currentUser.uid), { observationSets: [observationSet], observations: [observation], memberships: [membership] });
-  saveLocalCache(cache, auth.currentUser.uid);
-  invalidateLocalCacheSnapshots(auth.currentUser.uid);
-  return membership;
+  const cache = mergeNormalizedObservationCache(getLocalCache(uid), {
+    observationSets: [membership.observationSet],
+    observations: [membership.observation],
+    memberships: [membership.newMembership]
+  });
+  saveLocalCache(cache, uid);
+  invalidateLocalCacheSnapshots(uid);
+  return membership.newMembership;
 }
 
 /** Detaching deletes only the relationship document; it never deletes the observation. */

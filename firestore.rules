@@ -153,21 +153,26 @@ service cloud.firestore {
         && isUuidV7(data.observationId)
         && membershipId == data.observationSetId + '__' + data.observationId
         && data.uid is string
-        && data.position is int
+        && (data.position is int || data.position is number)
         && data.position >= 0
         && data.schemaVersion == '2.0.0'
         && data.createdAt is timestamp;
     }
 
     function hasActiveOwnedMembershipEndpoints(data) {
-      let observationSet = getAfter(/databases/$(database)/documents/observationSets/$(data.observationSetId)).data;
-      let observation = getAfter(/databases/$(database)/documents/observations/$(data.observationId)).data;
-      return observationSet.uid == request.auth.uid
-        && observation.uid == request.auth.uid
-        && observationSet.schemaVersion == '2.0.0'
-        && observation.schemaVersion == '2.0.0'
-        && observationSet.deletedAt == null
-        && observation.deletedAt == null;
+      let setPath = /databases/$(database)/documents/observationSets/$(data.observationSetId);
+      let obsPath = /databases/$(database)/documents/observations/$(data.observationId);
+      
+      let setDoc = existsAfter(setPath) ? getAfter(setPath) : null;
+      let obsDoc = existsAfter(obsPath) ? getAfter(obsPath) : null;
+
+      return setDoc != null && obsDoc != null
+        && setDoc.data.uid == request.auth.uid
+        && obsDoc.data.uid == request.auth.uid
+        && setDoc.data.get('schemaVersion', 'none') == '2.0.0'
+        && obsDoc.data.get('schemaVersion', 'none') == '2.0.0'
+        && setDoc.data.get('deletedAt', null) == null
+        && obsDoc.data.get('deletedAt', null) == null;
     }
 
     function canReadMembership(data) {
@@ -208,7 +213,7 @@ service cloud.firestore {
     }
 
     match /observationSetMemberships/{membershipId} {
-      allow read: if canReadMembership(resource.data);
+      allow read: if resource == null || canReadMembership(resource.data);
       allow create: if isAuthenticated()
         && request.resource.data.uid == request.auth.uid
         && validMembership(request.resource.data, membershipId)

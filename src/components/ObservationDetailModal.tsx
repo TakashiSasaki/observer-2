@@ -50,6 +50,8 @@ export const ObservationDetailModal: React.FC<ObservationDetailModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [isAttachmentPickerOpen, setIsAttachmentPickerOpen] = useState(false);
   const [membershipActionId, setMembershipActionId] = useState<string | null>(null);
+  const [confirmDetachId, setConfirmDetachId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   if (!observation) return null;
 
@@ -89,24 +91,26 @@ export const ObservationDetailModal: React.FC<ObservationDetailModalProps> = ({
   };
 
   const attachCandidate = async (observationId: string) => {
+    setErrorMessage(null);
     setMembershipActionId(`attach:${observationId}`);
     try {
       await onAttachObservation(observationId);
     } catch (error) {
       console.error('Failed to attach Observation to set:', error);
-      alert('観測をセットへ追加できませんでした。');
+      setErrorMessage('観測をセットへ追加できませんでした。権限またはネットワークを確認してください。');
     } finally {
       setMembershipActionId(null);
     }
   };
 
   const detachMember = async (observationId: string) => {
+    setErrorMessage(null);
     setMembershipActionId(`detach:${observationId}`);
     try {
       await onDetachObservation(observationId);
     } catch (error) {
       console.error('Failed to detach Observation from set:', error);
-      alert('セットから観測を外せませんでした。');
+      setErrorMessage('セットから観測を外せませんでした。権限またはネットワークを確認してください。');
     } finally {
       setMembershipActionId(null);
     }
@@ -116,6 +120,11 @@ export const ObservationDetailModal: React.FC<ObservationDetailModalProps> = ({
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 p-6 space-y-6 animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
+        {errorMessage && (
+          <div className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800 border border-rose-200">
+            {errorMessage}
+          </div>
+        )}
         <div className="flex items-start justify-between border-b border-slate-200 pb-3">
           <div className="space-y-1 pr-4">
             <div className="flex items-center gap-2">
@@ -235,24 +244,47 @@ export const ObservationDetailModal: React.FC<ObservationDetailModalProps> = ({
                           {new Date(sub.createdAt).toLocaleTimeString('ja-JP')}
                         </span>
                         {isOwner && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (window.confirm(`「${sub.title}」をこのセットから外しますか？ 観測本体と他のセットへの所属は残ります。`)) {
-                                void detachMember(sub.id);
-                              }
-                            }}
-                            disabled={membershipActionId !== null}
-                            title="このセットから外す"
-                            className="inline-flex items-center gap-1 rounded border border-rose-200 bg-white px-1.5 py-1 text-[10px] font-bold text-rose-700 transition hover:bg-rose-50 disabled:cursor-wait disabled:opacity-60"
-                          >
-                            {membershipActionId === `detach:${sub.id}` ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
+                          <div className="flex items-center gap-1">
+                            {confirmDetachId === sub.id ? (
+                              <>
+                                <span className="text-[10px] text-rose-600 font-medium">外しますか？</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setConfirmDetachId(null);
+                                    void detachMember(sub.id);
+                                  }}
+                                  disabled={membershipActionId !== null}
+                                  className="inline-flex items-center gap-1 rounded bg-rose-600 px-1.5 py-1 text-[10px] font-bold text-white transition hover:bg-rose-700 disabled:cursor-wait disabled:opacity-60"
+                                >
+                                  {membershipActionId === `detach:${sub.id}` ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    'はい'
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDetachId(null)}
+                                  disabled={membershipActionId !== null}
+                                  className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-1.5 py-1 text-[10px] font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+                                >
+                                  キャンセル
+                                </button>
+                              </>
                             ) : (
-                              <Unlink className="h-3 w-3" />
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDetachId(sub.id)}
+                                disabled={membershipActionId !== null}
+                                title="このセットから外す"
+                                className="inline-flex items-center gap-1 rounded border border-rose-200 bg-white px-1.5 py-1 text-[10px] font-bold text-rose-700 transition hover:bg-rose-50 disabled:cursor-wait disabled:opacity-60"
+                              >
+                                <Unlink className="h-3 w-3" />
+                                このセットから外す
+                              </button>
                             )}
-                            このセットから外す
-                          </button>
+                          </div>
                         )}
                       </div>
                     </div>

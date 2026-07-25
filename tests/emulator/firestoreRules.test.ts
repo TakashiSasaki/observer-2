@@ -287,3 +287,34 @@ test('bounded owner reads can continue with a cursor and detect exhaustion', asy
   )));
   assert.equal(exhaustionProbe.empty, true);
 });
+
+test('membership write within transaction', async () => {
+  await seedOwnedEndpoints(ids.observationSetA, ids.observationA, OWNER_UID);
+  const db = authenticatedFirestore(OWNER_UID);
+  
+  await assertSucceeds(runTransaction(db, async (t) => {
+    t.set(
+      db.doc(`observationSetMemberships/${ids.observationSetA}__${ids.observationA}`),
+      membershipDocument(ids.observationSetA, ids.observationA, OWNER_UID)
+    );
+  }));
+});
+
+test('membership write within transaction with gets', async () => {
+  await seedOwnedEndpoints(ids.observationSetA, ids.observationA, OWNER_UID);
+  const db = authenticatedFirestore(OWNER_UID);
+  
+  await assertSucceeds(runTransaction(db, async (t) => {
+    const setRef = db.doc(`observationSets/${ids.observationSetA}`);
+    const obsRef = db.doc(`observations/${ids.observationA}`);
+    const memRef = db.doc(`observationSetMemberships/${ids.observationSetA}__${ids.observationA}`);
+    await t.get(setRef);
+    await t.get(obsRef);
+    await t.get(memRef).catch(() => {});
+    
+    t.set(
+      memRef,
+      membershipDocument(ids.observationSetA, ids.observationA, OWNER_UID)
+    );
+  }));
+});
