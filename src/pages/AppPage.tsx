@@ -42,7 +42,35 @@ import {
   Compass,
   AlertTriangle,
 } from 'lucide-react';
-import { isRemoteDataIntegrityError } from '../domain/remoteReadPolicy';
+import { isRemoteDataIntegrityError, isRemoteReadError } from '../domain/remoteReadPolicy';
+
+function attachmentCandidatesErrorMessage(error: unknown): string {
+  if (isRemoteDataIntegrityError(error)) {
+    return 'Firestoreのv2データ契約に違反する記録を検出しました。追加候補を表示していません。データを修正した後に再試行してください。';
+  }
+  if (isRemoteReadError(error)) {
+    switch (error.kind) {
+      case 'permission-denied':
+        return '追加候補を読む権限がありません。認証中のユーザーとObservationの所有者を確認してください。';
+      case 'unauthenticated':
+        return '認証状態を確認できないため、追加候補を取得できません。再認証してから再試行してください。';
+      case 'not-found':
+        return '追加候補の読み取り先が見つかりません。Firestoreのv2コレクションを確認してください。';
+      case 'failed-precondition':
+        return 'Firestoreのquery前提条件を満たせません。必要なindexを確認してから再試行してください。';
+      case 'resource-exhausted':
+        return 'Firestoreの読み取り制限に達しました。少し待ってから再試行してください。';
+      case 'unavailable':
+      case 'deadline-exceeded':
+      case 'aborted':
+      case 'cancelled':
+        return 'Firestoreへの一時的な読み取り障害です。候補は表示していないため、再試行してください。';
+      default:
+        return 'Firestoreから追加候補を取得できませんでした。エラーを確認して再試行してください。';
+    }
+  }
+  return '追加可能な観測を取得できませんでした。ネットワークと認証状態を確認して再試行してください。';
+}
 
 export default function AppPage() {
   const [currentUser, setCurrentUser] = useState<ObserverUser | null>(null);
@@ -238,9 +266,7 @@ export default function AppPage() {
     } catch (error) {
       console.error('Failed to load attachable Observations:', error);
       setAttachmentCandidates([]);
-      setAttachmentCandidatesError(isRemoteDataIntegrityError(error)
-        ? 'Firestoreのv2データ契約に違反する記録を検出しました。追加候補を表示していません。'
-        : '追加可能な観測を取得できませんでした。ネットワークと認証状態を確認してください。');
+      setAttachmentCandidatesError(attachmentCandidatesErrorMessage(error));
     } finally {
       setIsAttachmentCandidatesLoading(false);
     }
