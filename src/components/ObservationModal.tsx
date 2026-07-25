@@ -61,6 +61,7 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Composite Multi-observation state for the same target object
+  const [captureMode, setCaptureMode] = useState<'single' | 'composite'>('single');
   const [draftObservations, setDraftObservations] = useState<Observation[]>([]);
   const [compositeTitle, setCompositeTitle] = useState<string>('');
 
@@ -119,8 +120,10 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({
       deletedAt: null,
     };
 
-    // If there are already items in the batch, auto append
-    if (draftObservations.length > 0) {
+    // Composite mode deliberately queues the first capture. Once a queue
+    // exists, subsequent captures remain in that same explicit batch even if
+    // the scanner selection changes.
+    if (captureMode === 'composite' || draftObservations.length > 0) {
       setDraftObservations((prev) => [...prev, newObsItem]);
       return;
     }
@@ -202,6 +205,7 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({
 
       setDraftObservations([]);
       setCompositeTitle('');
+      setCaptureMode('single');
       onClose();
     } catch (err) {
       console.error('Save composite observation error:', err);
@@ -241,6 +245,39 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({
           >
             <X className="w-5 h-5" />
           </button>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-700">保存単位</div>
+              <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                複数方式のcaptureを同一対象のObservationSetへまとめる場合は、最初にセット作成を選択します。
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-1.5">
+              <button
+                type="button"
+                disabled={draftObservations.length > 0}
+                onClick={() => setCaptureMode('single')}
+                className={`rounded-lg border px-3 py-1.5 text-[11px] font-bold transition ${captureMode === 'single' && draftObservations.length === 0 ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'} disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                1件ずつ保存
+              </button>
+              <button
+                type="button"
+                onClick={() => setCaptureMode('composite')}
+                className={`rounded-lg border px-3 py-1.5 text-[11px] font-bold transition ${captureMode === 'composite' ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'}`}
+              >
+                観測セットを作成
+              </button>
+            </div>
+          </div>
+          {captureMode === 'composite' && draftObservations.length === 0 && (
+            <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[10px] leading-4 text-blue-900">
+              次のcaptureは保存されず、まずdraft queueへ入ります。必要な方式を追加してから統合保存してください。
+            </div>
+          )}
         </div>
 
         {/* Draft Observations Queue Section if present */}

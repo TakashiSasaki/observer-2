@@ -355,11 +355,15 @@ Do not claim JCS conformance without implementing and testing the RFC.
 
 ### 8.4 Delivery boundary
 
-The repository currently exports pure codec functions, not a complete user or
-external integration workflow. A persistence importer still needs explicit
-decisions for:
+The application provides an owner-scoped export/download and a bounded import
+dry-run. The dry-run parses and semantically validates a file, compares it with
+the current owner's canonical records, reports counts/references/deletions,
+classifies identical versus conflicting IDs, rejects foreign owners, and never
+writes to Firestore. The current limits are 2,000,000 UTF-8 bytes and 1,000
+total records across the three arrays.
 
-- validation report and dry-run behavior;
+A persistence importer still needs explicit decisions for:
+
 - owner preservation or remapping;
 - ID collision semantics;
 - identical-record idempotency;

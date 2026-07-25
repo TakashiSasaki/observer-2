@@ -112,19 +112,19 @@ Firestore writes are attempted only when `auth.currentUser` exists.
 ### 6.2 Create a set and observations
 
 The creation modal supports `qr`, `nfc`, `object`, `ocr`, and `manual`
-observations. The currently reachable normal UI save creates:
+observations. In single-capture mode the normal UI save creates:
 
 - one canonical `ObservationSet`;
 - one canonical `Observation`;
 - one membership.
 
+The modal also has an explicit composite-set mode. In that mode the first
+capture is placed into an in-memory draft queue rather than being saved
+immediately; additional QR, NFC, OCR, object, or manual captures can be queued
+and then saved as independent Observations with explicit Membership records.
 The service accepts several observation drafts and can create one membership
 for each in a single client batch. It limits a batch to nine memberships so
-that Firestore Rules endpoint checks remain below access-call limits. The modal
-contains composite-draft display and save code, but the current state machine
-does not expose a transition that places the first capture into that queue.
-Multi-capture creation must therefore be treated as incomplete UI, not as a
-working user feature.
+that Firestore Rules endpoint checks remain below access-call limits.
 
 If no Firebase user is available, the canonical entities are still constructed
 and placed in the normalized local cache, but no remote write occurs.
@@ -255,8 +255,8 @@ Current limitations:
 - transport, permission, and availability failures are not yet classified into
   a narrow typed error policy;
 - the cache has no TTL or complete-snapshot/reconciliation marker;
-- the UI logs load errors but does not yet present a dedicated integrity-error
-  state to the user;
+- attachment-picker failures and some partial reads still share a generic UI
+  error path;
 - per-set membership and per-observation read failures can produce a partial
   remote projection.
 
@@ -275,14 +275,17 @@ codec:
 - serializes object keys deterministically;
 - round-trips canonical bundles.
 
-This is a contract and codec, not yet a complete delivery feature. The
-application does not currently provide:
+The application now provides a bounded no-write exchange experience in `/app`:
 
-- a download/export button;
-- import file selection and validation report;
-- conflict preview;
-- Firestore import writes;
-- idempotency or ownership-remapping policy for imported data.
+- owner-scoped export of active canonical records;
+- deterministic JSON download;
+- import file selection and structural/semantic validation report;
+- owner, reference, deletion, collision, and practical size previews;
+- an explicit guarantee that the dry-run does not write to Firestore.
+
+The application does not yet provide authorized Firestore import writes,
+idempotency, or ownership remapping. Those policies must be decided together
+with the persistence importer.
 
 See `docs/data-contract-2.0.0.md` and `docs/work-packages.md`.
 

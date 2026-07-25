@@ -50,6 +50,15 @@ import {
   withRemoteDataIntegrity,
 } from '../domain/remoteReadPolicy';
 import {
+  analyzeObservationInterchangeImport,
+  createObservationInterchangeBundle,
+  invalidObservationInterchangeImportDryRunReport,
+  MAX_INTERCHANGE_RECORDS,
+  parseObservationInterchangeBundle,
+  type ObservationInterchangeBundle,
+  type ObservationInterchangeImportDryRunReport,
+} from '../domain/observationInterchange';
+import {
   membershipProjectionQueryPlan,
   observationSetFeedQueryPlan,
   ownedObservationPickerQueryPlan,
@@ -284,8 +293,13 @@ async function fetchReadableObservations(memberships: ObservationSetMembership[]
   return entries.filter((entry): entry is Observation => entry !== null);
 }
 
-async function fetchFirestoreViews(filterMode: ObservationSetFeedMode, currentUserUid?: string, currentUserEmail?: string): Promise<ObservationSetView[]> {
-  const plan = observationSetFeedQueryPlan(filterMode, currentUserUid, currentUserEmail);
+async function fetchFirestoreViews(
+  filterMode: ObservationSetFeedMode,
+  currentUserUid?: string,
+  currentUserEmail?: string,
+  resultLimit?: number,
+): Promise<ObservationSetView[]> {
+  const plan = observationSetFeedQueryPlan(filterMode, currentUserUid, currentUserEmail, resultLimit);
   if (!plan) return [];
 
   const setSnapshot = await getDocs(query(
@@ -352,10 +366,11 @@ export async function fetchObservations(
   filterMode: ObservationSetFeedMode,
   currentUserUid?: string,
   currentUserEmail?: string,
+  resultLimit?: number,
 ): Promise<ObservationSetView[]> {
   let remoteViews: ObservationSetView[] | undefined;
   try {
-    const views = await fetchFirestoreViews(filterMode, currentUserUid, currentUserEmail);
+    const views = await fetchFirestoreViews(filterMode, currentUserUid, currentUserEmail, resultLimit);
     remoteViews = views;
     const cache = mergeNormalizedObservationCache(getLocalCache(), {
       observationSets: views,
@@ -378,12 +393,12 @@ export async function fetchObservations(
  * to one of their ObservationSets. The query is deliberately owner-scoped;
  * feed visibility never acts as authority to create a Membership.
  */
-export async function fetchOwnedActiveObservations(ownerUid: string): Promise<Observation[]> {
+export async function fetchOwnedActiveObservations(ownerUid: string, resultLimit = 100): Promise<Observation[]> {
   if (!auth.currentUser || auth.currentUser.uid !== ownerUid) {
     throw new Error('The signed-in user must own the Observation attachment candidates.');
   }
 
-  const plan = ownedObservationPickerQueryPlan(ownerUid);
+  const plan = ownedObservationPickerQueryPlan(ownerUid, resultLimit);
   if (!plan) return [];
 
   let cache = getLocalCache();
@@ -409,7 +424,82 @@ export async function fetchOwnedActiveObservations(ownerUid: string): Promise<Ob
     .sort((left, right) => (
       right.createdAt.localeCompare(left.createdAt)
       || left.id.localeCompare(right.id)
+  ));
+}
+
+type OwnedCanonicalRecords = {
+  observations: Observation[];
+  observationSets: ObservationSet[];
+  memberships: ObservationSetMembership[];
+};
+
+function uniqueRecords<T extends { id: string }>(records: Iterable<T>): T[] {
+  return [...new Map([...records].map((record) => [record.id, record])).values()];
+}
+
+/**
+ * Reads the owner's current canonical records for the no-write exchange path.
+ * The result is assembled from remote-backed views and the owner-only
+ * observation picker; it never exports ObservationSetView as a record.
+ */
+async function loadOwnedCanonicalRecords(ownerUid: string, ownerEmail?: string): Promise<OwnedCanonicalRecords> {
+  const views = await fetchObservations('mine', ownerUid, ownerEmail, MAX_INTERCHANGE_RECORDS);
+  const pickerObservations = await fetchOwnedActiveObservations(ownerUid, MAX_INTERCHANGE_RECORDS);
+  const observationSets = uniqueRecords(views)
+    .map(({ observations: _observations, memberships: _memberships, ...observationSet }) => observationSet)
+    .filter((observationSet) => observationSet.uid === ownerUid && observationSet.deletedAt === null);
+  const observations = uniqueRecords([
+    ...pickerObservations,
+    ...views.flatMap((view) => view.observations),
+  ]).filter((observation) => observation.uid === ownerUid && observation.deletedAt === null);
+  const observationSetIds = new Set(observationSets.map((observationSet) => observationSet.id));
+  const ownedObservationIds = new Set(observations.map((observation) => observation.id));
+  const memberships = uniqueRecords(views.flatMap((view) => view.memberships))
+    .filter((membership) => (
+      membership.uid === ownerUid
+      && observationSetIds.has(membership.observationSetId)
+      && ownedObservationIds.has(membership.observationId)
     ));
+  return { observations, observationSets, memberships };
+}
+
+/** Exports the owner's active canonical records as deterministic v2 data. */
+export async function exportOwnedObservationInterchangeBundle(
+  ownerUid: string,
+  ownerEmail?: string,
+): Promise<ObservationInterchangeBundle> {
+  if (!auth.currentUser || auth.currentUser.uid !== ownerUid) {
+    throw new Error('The signed-in user must own the exported Observation records.');
+  }
+  const records = await loadOwnedCanonicalRecords(ownerUid, ownerEmail ?? auth.currentUser.email ?? undefined);
+  return createObservationInterchangeBundle({
+    exportedAt: new Date().toISOString(),
+    ...records,
+  });
+}
+
+/**
+ * Parses and compares an import file against current owner records. This is a
+ * dry-run only: it performs reads and local validation but never writes to
+ * Firestore. The persistence commit policy is intentionally a later package.
+ */
+export async function dryRunOwnedObservationInterchangeImport(
+  serialized: string,
+  ownerUid: string,
+  ownerEmail?: string,
+): Promise<ObservationInterchangeImportDryRunReport> {
+  if (!auth.currentUser || auth.currentUser.uid !== ownerUid) {
+    throw new Error('The signed-in user must own the import dry-run context.');
+  }
+  const records = await loadOwnedCanonicalRecords(ownerUid, ownerEmail ?? auth.currentUser.email ?? undefined);
+  let bundle: ObservationInterchangeBundle;
+  try {
+    bundle = parseObservationInterchangeBundle(serialized);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'The import file could not be validated.';
+    return invalidObservationInterchangeImportDryRunReport(ownerUid, message);
+  }
+  return analyzeObservationInterchangeImport(bundle, records, ownerUid);
 }
 
 /** Attaches an existing observation to an existing set without duplicating either endpoint. */

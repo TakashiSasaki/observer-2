@@ -58,11 +58,11 @@ Do not silently repurpose one surface for another responsibility.
 - npm
 - Java 21 only when running the Firestore Emulator rules tests
 
-This repository currently has no committed npm lockfile. Use the same install
-path as CI:
+The current `main` commits `package-lock.json`. Use the reproducible install
+path used by CI:
 
 ```bash
-npm install --ignore-scripts
+npm ci --ignore-scripts
 ```
 
 Create local configuration without committing credentials:
@@ -120,9 +120,11 @@ planes for pull requests targeting `main`.
 - Only schema version `2.0.0` is accepted.
 - The current dataset was declared empty at the v2 cutover. No v1 migration,
   backward read compatibility, dual-write, or v1 import path exists.
-- The codec can validate, canonicalize, parse, and serialize interchange
-  bundles. A user-facing import/export workflow and Firestore import commit path
-  are not yet implemented.
+- The app can export the owner's active canonical records and download a
+  deterministic 2.0.0 JSON bundle. It also provides an import dry-run that
+  validates structure, semantics, ownership, references, deletions, collisions,
+  and practical size limits without writing to Firestore. The authorized
+  Firestore import commit path is not yet implemented.
 - Entity deletion is a soft delete. Detaching an observation physically deletes
   only its membership.
 - Image data is currently represented by `imageUrl`; the UI can place a WebP
