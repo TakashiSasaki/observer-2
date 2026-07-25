@@ -1,0 +1,134 @@
+# Observer
+
+Observer is a React, TypeScript, Firebase, and Express application for recording
+multimodal field observations. A user can record manual notes, QR codes, NFC
+tags, OCR results, and AI-assisted object observations with optional images and
+locations, then group one canonical `Observation` into one or more
+`ObservationSet` records.
+
+The current persistence and interchange contract is **2.0.0**. It uses three
+independent canonical entities:
+
+- `Observation`
+- `ObservationSet`
+- `ObservationSetMembership`
+
+`ObservationSetView` is a read-time projection. It is never a Firestore
+document and must never be exported as a canonical entity.
+
+## Start here
+
+A coding agent that has not seen this repository before should read these files
+in order:
+
+1. [`AGENTS.md`](AGENTS.md) — repository rules, sources of truth, workflow, and
+   non-negotiable invariants.
+2. [`docs/application-specification.md`](docs/application-specification.md) —
+   product behavior, actors, interface surfaces, and runtime boundaries.
+3. [`docs/data-contract-2.0.0.md`](docs/data-contract-2.0.0.md) — canonical
+   entities, Firestore persistence, ACL, cache, and interchange rules.
+4. [`docs/work-packages.md`](docs/work-packages.md) — current WP00–WP07 status,
+   remaining work, acceptance criteria, and effort estimate.
+5. [`audit/m2m/README.md`](audit/m2m/README.md) — how to interpret the frozen
+   WP00 audit registry.
+
+The rendered internal developer summary is available at `/dev`.
+
+## Interface surfaces
+
+The project uses the following application-interface vocabulary. The vocabulary
+is a product contract, not a required mirror of the source directory layout.
+
+| Surface | Path | Current status | Responsibility |
+|---|---|---:|---|
+| public | `/` | Implemented | Product description and entry point |
+| app | `/app` | Implemented | Normal user workflow |
+| admin | `/admin` | Reserved | Administration, audit, and legacy read-only tools |
+| dev | `/dev` | Implemented | Internal implementation documentation and status |
+| api | `/api` | Partial | Runtime AI endpoints exist; external APIs must use versioned subpaths such as `/api/v1` |
+| test | `/test` | Reserved | Interactive vertical-slice and acceptance-test surface |
+
+Do not silently repurpose one surface for another responsibility.
+
+## Local development
+
+### Prerequisites
+
+- Node.js 22
+- npm
+- Java 21 only when running the Firestore Emulator rules tests
+
+This repository currently has no committed npm lockfile. Use the same install
+path as CI:
+
+```bash
+npm install --ignore-scripts
+```
+
+Create local configuration without committing credentials:
+
+```bash
+cp .env.example .env
+cp firebase-applet-config.json.example firebase-applet-config.json
+```
+
+- `GEMINI_API_KEY` is read only by the Express server.
+- `firebase-applet-config.json` configures Firebase Auth and Firestore.
+- If the Firebase file is absent, the client loads a non-production demo
+  configuration. That does not make a real Firebase backend available.
+
+Run the development server:
+
+```bash
+npm run dev
+```
+
+The server listens on port 3000.
+
+Build and run the production bundle:
+
+```bash
+npm run build
+npm start
+```
+
+The start script passes an explicit production flag and serves `dist`; it does
+not start Vite middleware.
+
+## Validation
+
+Run the checks that do not require Java:
+
+```bash
+npm run lint
+npm run build
+npm test
+npm run verify:m2m:harness
+```
+
+Run Firestore Security Rules tests with Java 21:
+
+```bash
+npm run test:firestore:emulator
+```
+
+GitHub Actions provisions Node.js 22 and Temurin JDK 21 and runs both validation
+planes for pull requests targeting `main`.
+
+## Important current boundaries
+
+- Only schema version `2.0.0` is accepted.
+- The current dataset was declared empty at the v2 cutover. No v1 migration,
+  backward read compatibility, dual-write, or v1 import path exists.
+- The codec can validate, canonicalize, parse, and serialize interchange
+  bundles. A user-facing import/export workflow and Firestore import commit path
+  are not yet implemented.
+- Entity deletion is a soft delete. Detaching an observation physically deletes
+  only its membership.
+- Image data is currently represented by `imageUrl`; the UI can place a WebP
+  data URL there. Cloud Storage upload and lifecycle management are not yet
+  implemented.
+- `Objects`, `Markers`, `Places`, and append-only association facts belong to
+  the broader product roadmap. They are not fields or collections in the
+  current observation contract and must not be added to schema 2.0.0 without a
+  separately approved contract.
