@@ -28,13 +28,37 @@ import {
   type ObservationSetMembership,
   type ObservationSetView,
 } from '../../src/types.ts';
-import { selectRemoteResult } from '../../src/domain/remoteReadPolicy.ts';
+import {
+  isRemoteDataIntegrityError,
+  RemoteDataIntegrityError,
+  selectRemoteResult,
+  withRemoteDataIntegrity,
+} from '../../src/domain/remoteReadPolicy.ts';
 
 const createdAt = '2026-07-24T12:00:00.000Z';
 
 test('a successful empty remote read does not fall back to stale cache data', () => {
   assert.deepEqual(selectRemoteResult([], () => ['stale']), []);
   assert.deepEqual(selectRemoteResult(undefined, () => ['stale']), ['stale']);
+});
+
+test('remote data integrity errors are not treated as recoverable read failures', () => {
+  const cause = new Error('invalid canonical ID');
+  let thrown: unknown;
+  try {
+    withRemoteDataIntegrity('Observation', 'bad-id', () => {
+      throw cause;
+    });
+  } catch (error) {
+    thrown = error;
+  }
+
+  assert.equal(isRemoteDataIntegrityError(thrown), true);
+  assert.equal(isRemoteDataIntegrityError(new Error('temporary read failure')), false);
+  assert.ok(thrown instanceof RemoteDataIntegrityError);
+  if (!(thrown instanceof RemoteDataIntegrityError)) return;
+  assert.match(thrown.message, /Observation bad-id violates the v2 Firestore data contract/);
+  assert.equal(thrown.originalError, cause);
 });
 
 function observation(overrides: Partial<Observation> = {}): Observation {
