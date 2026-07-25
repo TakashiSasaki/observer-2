@@ -36,6 +36,7 @@ import {
   createMembership,
   membershipDocumentId,
 } from '../domain/observationDomain';
+import { assertFirestoreDocumentIdentity } from '../domain/firestoreDocumentIdentity';
 import {
   assertNormalizedObservationCache,
   buildObservationSetViewsFromNormalizedObservationCache,
@@ -43,13 +44,17 @@ import {
   emptyNormalizedObservationCache,
   mergeNormalizedObservationCache,
 } from '../domain/normalizedObservationCache';
+import {
+  membershipProjectionQueryPlan,
+  observationSetFeedQueryPlan,
+  type FirestoreQueryPlan,
+  type ObservationSetFeedMode,
+} from './firestoreQueryPlan';
 import { processImageToWebP } from '../utils/imageUtils';
 import { generateId } from '../utils/idUtils';
 
 const LOCAL_STORAGE_KEY = 'observer-2.normalized-cache.v2';
 const MAX_NEW_MEMBERSHIPS_PER_CLIENT_BATCH = 9;
-
-type FilterMode = 'mine' | 'shared' | 'authenticated' | 'public';
 
 // User Auth Helpers
 export async function loginWithGoogle(): Promise<ObserverUser> {
@@ -114,6 +119,7 @@ function membershipToFirestore(membership: ObservationSetMembership): Record<str
 }
 
 function observationFromFirestore(id: string, data: DocumentData): Observation {
+  assertFirestoreDocumentIdentity(data, id, 'Observation');
   const observation: Observation = {
     ...(data as Omit<Observation, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>),
     id,
@@ -126,6 +132,7 @@ function observationFromFirestore(id: string, data: DocumentData): Observation {
 }
 
 function observationSetFromFirestore(id: string, data: DocumentData): ObservationSet {
+  assertFirestoreDocumentIdentity(data, id, 'ObservationSet');
   const observationSet: ObservationSet = {
     ...(data as Omit<ObservationSet, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>),
     id,
@@ -138,6 +145,7 @@ function observationSetFromFirestore(id: string, data: DocumentData): Observatio
 }
 
 function membershipFromFirestore(id: string, data: DocumentData): ObservationSetMembership {
+  assertFirestoreDocumentIdentity(data, id, 'ObservationSetMembership');
   const membership: ObservationSetMembership = {
     ...(data as Omit<ObservationSetMembership, 'id' | 'createdAt'>),
     id,
@@ -145,6 +153,15 @@ function membershipFromFirestore(id: string, data: DocumentData): ObservationSet
   };
   assertMembership(membership);
   return membership;
+}
+
+function toFirestoreQueryConstraints(plan: FirestoreQueryPlan): QueryConstraint[] {
+  const constraints: QueryConstraint[] = [
+    ...plan.filters.map((filter) => where(filter.fieldPath, filter.op, filter.value)),
+    ...plan.orderBy.map((ordering) => orderBy(ordering.fieldPath, ordering.direction)),
+  ];
+  if (plan.limit !== undefined) constraints.push(limit(plan.limit));
+  return constraints;
 }
 
 function getLocalCache(): NormalizedObservationCache {
@@ -207,7 +224,7 @@ function cacheViews(cache: NormalizedObservationCache): ObservationSetView[] {
   return buildObservationSetViewsFromNormalizedObservationCache(cache);
 }
 
-function filterLocalViews(views: ObservationSetView[], filterMode: FilterMode, currentUserUid?: string, currentUserEmail?: string): ObservationSetView[] {
+function filterLocalViews(views: ObservationSetView[], filterMode: ObservationSetFeedMode, currentUserUid?: string, currentUserEmail?: string): ObservationSetView[] {
   return views.filter((view) => {
     if (filterMode === 'mine') return Boolean(currentUserUid && view.uid === currentUserUid);
     if (filterMode === 'authenticated') return view.visibility === 'authenticated';
@@ -222,12 +239,10 @@ async function fetchMembershipsForSets(observationSets: ObservationSet[]): Promi
   const memberships: ObservationSetMembership[] = [];
   for (const observationSet of observationSets) {
     try {
+      const plan = membershipProjectionQueryPlan(observationSet.id, observationSet.uid);
       const snapshot = await getDocs(query(
-        collection(db, FIRESTORE_COLLECTIONS.memberships),
-        where('observationSetId', '==', observationSet.id),
-        where('uid', '==', observationSet.uid),
-        orderBy('position', 'asc'),
-        orderBy('id', 'asc'),
+        collection(db, plan.collection),
+        ...toFirestoreQueryConstraints(plan),
       ));
       memberships.push(...snapshot.docs.map((snapshotDoc) => membershipFromFirestore(snapshotDoc.id, snapshotDoc.data())));
     } catch (error) {
@@ -255,22 +270,14 @@ async function fetchReadableObservations(memberships: ObservationSetMembership[]
   return entries.filter((entry): entry is Observation => entry !== null);
 }
 
-async function fetchFirestoreViews(filterMode: FilterMode, currentUserUid?: string, currentUserEmail?: string): Promise<ObservationSetView[]> {
-  const constraints: QueryConstraint[] = [where('deletedAt', '==', null)];
-  if (filterMode === 'mine') {
-    if (!currentUserUid) return [];
-    constraints.unshift(where('uid', '==', currentUserUid));
-  } else if (filterMode === 'authenticated') {
-    constraints.unshift(where('visibility', '==', 'authenticated'));
-  } else if (filterMode === 'shared') {
-    if (!currentUserEmail) return [];
-    constraints.unshift(where('visibility', '==', 'shared'), where('allowedEmails', 'array-contains', currentUserEmail));
-  } else {
-    constraints.unshift(where('visibility', '==', 'public'));
-  }
-  constraints.push(orderBy('createdAt', 'desc'), limit(50));
+async function fetchFirestoreViews(filterMode: ObservationSetFeedMode, currentUserUid?: string, currentUserEmail?: string): Promise<ObservationSetView[]> {
+  const plan = observationSetFeedQueryPlan(filterMode, currentUserUid, currentUserEmail);
+  if (!plan) return [];
 
-  const setSnapshot = await getDocs(query(collection(db, FIRESTORE_COLLECTIONS.observationSets), ...constraints));
+  const setSnapshot = await getDocs(query(
+    collection(db, plan.collection),
+    ...toFirestoreQueryConstraints(plan),
+  ));
   const observationSets = setSnapshot.docs.map((snapshotDoc) => observationSetFromFirestore(snapshotDoc.id, snapshotDoc.data()));
   const memberships = await fetchMembershipsForSets(observationSets);
   const observations = await fetchReadableObservations(memberships);
@@ -326,7 +333,7 @@ export async function createObservation(draft: ObservationSetDraft): Promise<Obs
 
 /** Fetches a read-time projection; Firestore and local cache both remain normalized. */
 export async function fetchObservations(
-  filterMode: FilterMode,
+  filterMode: ObservationSetFeedMode,
   currentUserUid?: string,
   currentUserEmail?: string,
 ): Promise<ObservationSetView[]> {

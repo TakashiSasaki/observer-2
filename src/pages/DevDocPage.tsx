@@ -99,6 +99,13 @@ export default function DevDocPage() {
             現在のデータ数はゼロのため、v1 Firestoreデータの移行・読取り互換・インポート互換は実装しません。v2クライアントは <code>parentSetId</code>、埋込み <code>observations</code>、正本としての <code>observationIds</code> を書き込まず、交換形式も <code>schemas/observation-interchange.schema.json</code> の2.0.0三配列表現だけを受理します。
           </p>
         </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-bold text-slate-900">交換形式 2.0.0</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            交換bundleは <code>schemaVersion</code>、<code>exportedAt</code>、<code>observations</code>、<code>observationSets</code>、<code>memberships</code> だけを持つJSONです。import時には構造だけでなく、UUIDv7、時刻、正本ID、参照先、同一所有者Membership、JSONとしての表現可能性を検証します。exportはエンティティID順に正規化して出力します。
+          </p>
+        </section>
       </section>
     </main>
   );

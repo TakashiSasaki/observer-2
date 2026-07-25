@@ -57,6 +57,11 @@ function assertDate(value: unknown, name: string): asserts value is string {
   }
 }
 
+/** Validates a real RFC 3339 date-time for contracts outside an entity. */
+export function assertRfc3339DateTime(value: unknown, name: string): asserts value is string {
+  assertDate(value, name);
+}
+
 function assertUniqueStringArray(value: unknown, name: string): asserts value is string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
     fail(`${name} must be an array of strings`);

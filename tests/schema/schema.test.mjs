@@ -8,12 +8,16 @@ const readJson = (file) => JSON.parse(fs.readFileSync(path.join(root, file), 'ut
 
 test('v2 interchange schema uses only normalized top-level entity arrays', () => {
   const schema = readJson('schemas/observation-interchange.schema.json');
+  const interchange = fs.readFileSync(path.join(root, 'src/domain/observationInterchange.ts'), 'utf8');
   assert.equal(schema.properties.schemaVersion.const, '2.0.0');
   assert.deepEqual(Object.keys(schema.properties).sort(), ['exportedAt', 'memberships', 'observationSets', 'observations', 'schemaVersion']);
   assert.equal(schema.$defs.Observation.properties.parentSetId, undefined);
   assert.equal(schema.$defs.ObservationSet.properties.observationIds, undefined);
   assert.equal(schema.$defs.ObservationSet.properties.observations, undefined);
   assert.equal(schema.$defs.ObservationSetMembership.properties.id.description.includes('observationSetId'), true);
+  assert.match(interchange, /assertObservationInterchangeBundle/);
+  assert.match(interchange, /parseObservationInterchangeBundle/);
+  assert.match(interchange, /serializeObservationInterchangeBundle/);
 });
 
 test('repository excludes generated patch artifacts', () => {
@@ -53,6 +57,8 @@ test('client persistence uses the normalized collections and never writes v1 rel
   assert.match(service, /attachObservationToSet/);
   assert.match(service, /detachObservationFromSet/);
   assert.match(service, /updateObservation/);
+  assert.match(service, /observationSetFeedQueryPlan/);
+  assert.match(service, /membershipProjectionQueryPlan/);
   assert.doesNotMatch(service, /parentSetId/);
   assert.doesNotMatch(service, /observationIds/);
   assert.doesNotMatch(service, /singleObservations/);
@@ -67,4 +73,20 @@ test('v1 migration and backward compatibility are explicitly out of scope for th
   assert.equal(blueprint.v1FirestoreDataPolicy, 'not-required-current-data-empty');
   assert.match(developerDocs, /現在のデータ数はゼロ/);
   assert.match(developerDocs, /移行・読取り互換・インポート互換は実装しません/);
+});
+
+test('Firestore Emulator validation is isolated to a demo project and explicitly provisions Java in CI', () => {
+  const firebase = readJson('firebase.json');
+  const packageJson = readJson('package.json');
+  const workflow = fs.readFileSync(path.join(root, '.github/workflows/m2m-baseline.yml'), 'utf8');
+
+  assert.equal(firebase.emulators.singleProjectMode, true);
+  assert.equal(firebase.emulators.firestore.port, 8080);
+  assert.equal(firebase.emulators.ui.enabled, false);
+  assert.match(packageJson.scripts['test:firestore:emulator'], /firebase emulators:exec --only firestore/);
+  assert.match(packageJson.scripts['test:firestore:emulator'], /--project demo-observer-2/);
+  assert.match(workflow, /pull_request:/);
+  assert.match(workflow, /actions\/setup-java@v4/);
+  assert.match(workflow, /java-version: '21'/);
+  assert.match(workflow, /npm run test:firestore:emulator/);
 });
