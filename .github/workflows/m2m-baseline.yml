@@ -34,5 +34,5 @@ jobs:
       - name: Verify M2M harness
         run: npm run verify:m2m:harness
 
-      - name: Test M2M harness
-        run: npm run test:m2m:harness
+      - name: Run full test suite
+        run: npm test

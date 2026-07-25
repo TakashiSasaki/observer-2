@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  assertMembership,
+  assertObservation,
+  assertObservationSet,
   buildObservationSetViews,
   createMembership,
   membershipDocumentId,
@@ -9,6 +12,7 @@ import {
   CURRENT_SCHEMA_VERSION,
   type Observation,
   type ObservationSet,
+  type ObservationSetMembership,
 } from '../../src/types.ts';
 
 const createdAt = '2026-07-24T12:00:00.000Z';
@@ -159,4 +163,103 @@ test('set and observation ACLs remain independent of membership', () => {
   assert.equal(view.visibility, 'public');
   assert.equal(view.observations[0].visibility, 'private');
   assert.notEqual(view.visibility, view.observations[0].visibility);
+});
+
+test('canonical entity validators reject legacy relationship fields and duplicated lists', () => {
+  const item = observation();
+  const set = observationSet('018fd116-8cf0-7def-8abc-1234567890ac');
+
+  assert.throws(
+    () => assertObservation({ ...item, parentSetId: set.id } as unknown as Observation),
+    /Observation has unsupported field parentSetId/,
+  );
+  assert.throws(
+    () => assertObservationSet({ ...set, observationIds: [item.id] } as unknown as ObservationSet),
+    /ObservationSet has unsupported field observationIds/,
+  );
+  assert.throws(
+    () => assertObservationSet({ ...set, observations: [item] } as unknown as ObservationSet),
+    /ObservationSet has unsupported field observations/,
+  );
+  assert.throws(
+    () => assertObservation({ ...item, visibility: 'shared', allowedEmails: ['a@example.test', 'a@example.test'] }),
+    /allowedEmails must not contain duplicate values/,
+  );
+  assert.throws(
+    () => assertObservationSet({ ...set, tags: ['manual', 'manual'] }),
+    /tags must not contain duplicate values/,
+  );
+  assert.throws(
+    () => assertObservation({ ...item, location: { latitude: 91, longitude: 0 } }),
+    /location\.latitude must be a finite number between -90 and 90/,
+  );
+  assert.doesNotThrow(() => assertObservation({
+    ...item,
+    observerName: null as unknown as string,
+    observerPhoto: null as unknown as string,
+    imageUrl: null as unknown as string,
+    imagePath: null as unknown as string,
+    location: null as unknown as Observation['location'],
+  }));
+});
+
+test('canonical entity timestamps are RFC 3339 and never precede their creation', () => {
+  const item = observation();
+
+  assert.throws(
+    () => assertObservation({ ...item, createdAt: '2026-07-24' }),
+    /createdAt must be an RFC 3339 date-time string/,
+  );
+  assert.throws(
+    () => assertObservation({ ...item, createdAt: '2026-02-30T12:00:00.000Z' }),
+    /createdAt must name a real RFC 3339 date-time/,
+  );
+  assert.throws(
+    () => assertObservation({ ...item, updatedAt: '2026-07-24T11:59:59.999Z' }),
+    /updatedAt must not be earlier than Observation.createdAt/,
+  );
+  assert.throws(
+    () => assertObservation({ ...item, deletedAt: '2026-07-24T11:59:59.999Z' }),
+    /deletedAt must not be earlier than Observation.createdAt/,
+  );
+});
+
+test('membership references must use UUIDv7 endpoints even when validated independently', () => {
+  const invalidMembership: ObservationSetMembership = {
+    id: 'not-a-uuidv7__also-not-a-uuidv7',
+    observationSetId: 'not-a-uuidv7',
+    observationId: 'also-not-a-uuidv7',
+    uid: 'owner-a',
+    position: 0,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    createdAt,
+  };
+
+  assert.throws(() => assertMembership(invalidMembership), /Membership\.observationSetId must be a lowercase UUIDv7/);
+  assert.throws(
+    () => membershipDocumentId('not-a-uuidv7', observation().id),
+    /observationSetId must be a lowercase UUIDv7/,
+  );
+});
+
+test('view reconstruction rejects duplicate canonical entity IDs instead of overwriting one source record', () => {
+  const item = observation();
+  const set = observationSet('018fd116-8cf0-7def-8abc-1234567890ac');
+
+  assert.throws(
+    () => buildObservationSetViews({
+      observationSets: [set, { ...set, title: 'conflicting duplicate' }],
+      observations: [item],
+      memberships: [],
+    }),
+    /duplicate ObservationSet\.id/,
+  );
+  assert.throws(
+    () => buildObservationSetViews({
+      observationSets: [set],
+      observations: [item, { ...item, title: 'conflicting duplicate' }],
+      memberships: [],
+    }),
+    /duplicate Observation\.id/,
+  );
 });

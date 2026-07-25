@@ -58,6 +58,6 @@
       "reverse membership lookup by observation"
     ]
   },
-  "v1FirestoreDataPolicy": "pending-user-decision",
+  "v1FirestoreDataPolicy": "not-required-current-data-empty",
   "v1WritePolicy": "forbidden-after-v2-cutover"
 }

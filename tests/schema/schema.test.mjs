@@ -57,3 +57,14 @@ test('client persistence uses the normalized collections and never writes v1 rel
   assert.doesNotMatch(service, /observationIds/);
   assert.doesNotMatch(service, /singleObservations/);
 });
+
+test('v1 migration and backward compatibility are explicitly out of scope for the empty data set', () => {
+  const decisions = readJson('audit/m2m/decisions.json');
+  const blueprint = readJson('firebase-blueprint.json');
+  const developerDocs = fs.readFileSync(path.join(root, 'src/pages/DevDocPage.tsx'), 'utf8');
+
+  assert.equal(decisions.v1FirestoreDataPolicy, 'not-required-current-data-empty');
+  assert.equal(blueprint.v1FirestoreDataPolicy, 'not-required-current-data-empty');
+  assert.match(developerDocs, /現在のデータ数はゼロ/);
+  assert.match(developerDocs, /移行・読取り互換・インポート互換は実装しません/);
+});
