@@ -8,6 +8,15 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
+import {
+  collection,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  startAfter,
+  where,
+} from 'firebase/firestore';
 
 const PROJECT_ID = 'demo-observer-2';
 const OWNER_UID = 'owner-user';
@@ -231,4 +240,50 @@ test('the attachment picker can query only the active Observations owned by its 
       .orderBy('createdAt', 'desc')
       .get(),
   );
+});
+
+test('bounded owner reads can continue with a cursor and detect exhaustion', async () => {
+  await Promise.all([
+    seed(['observations', ids.observationA], observationDocument(ids.observationA, OWNER_UID, 'private', [], {
+      createdAt: new Date('2026-07-25T00:00:00.000Z'),
+      updatedAt: new Date('2026-07-25T00:00:00.000Z'),
+    })),
+    seed(['observations', ids.observationB], observationDocument(ids.observationB, OWNER_UID, 'private', [], {
+      createdAt: new Date('2026-07-25T00:01:00.000Z'),
+      updatedAt: new Date('2026-07-25T00:01:00.000Z'),
+    })),
+    seed(['observations', ids.observationC], observationDocument(ids.observationC, OWNER_UID, 'private', [], {
+      createdAt: new Date('2026-07-25T00:02:00.000Z'),
+      updatedAt: new Date('2026-07-25T00:02:00.000Z'),
+    })),
+  ]);
+
+  const ownerDb = authenticatedFirestore(OWNER_UID);
+  const baseQuery = [
+    where('uid', '==', OWNER_UID),
+    where('deletedAt', '==', null),
+    orderBy('createdAt', 'desc'),
+  ] as const;
+  const firstPage = await assertSucceeds(getDocs(query(
+    collection(ownerDb, 'observations'),
+    ...baseQuery,
+    limit(2),
+  )));
+  assert.equal(firstPage.docs.length, 2);
+
+  const secondPage = await assertSucceeds(getDocs(query(
+    collection(ownerDb, 'observations'),
+    ...baseQuery,
+    startAfter(firstPage.docs[firstPage.docs.length - 1]),
+    limit(2),
+  )));
+  assert.equal(secondPage.docs.length, 1);
+
+  const exhaustionProbe = await assertSucceeds(getDocs(query(
+    collection(ownerDb, 'observations'),
+    ...baseQuery,
+    startAfter(secondPage.docs[secondPage.docs.length - 1]),
+    limit(1),
+  )));
+  assert.equal(exhaustionProbe.empty, true);
 });

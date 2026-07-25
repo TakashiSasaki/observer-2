@@ -65,7 +65,7 @@ const workPackageRows = [
   { id: 'WP04', scope: 'Rules・Emulator', status: 'implemented', remaining: '最終treeでもJDK 21検証' },
   { id: 'WP05', scope: 'UI', status: 'implemented', remaining: 'M01〜M03とcomposite操作の手動受入' },
   { id: 'WP06', scope: '交換形式2.0.0', status: 'partial', remaining: 'Firestore import commitの方針と実装' },
-  { id: 'WP07', scope: 'legacy除去・最終検証', status: 'partial', remaining: 'bounded readのページング・実Firestore/Auth受入・closeout' },
+  { id: 'WP07', scope: 'legacy除去・最終検証', status: 'partial', remaining: '実Firestore/Auth受入・closeout' },
 ];
 
 const sourceRows = [
@@ -246,7 +246,7 @@ export default function DevDocPage() {
                   <li>versioned external API <code>/api/vN</code>。</li>
                   <li>Cloud Storage upload・cleanup・URL lifecycle。</li>
                   <li>Observation更新・削除およびMembership並べ替えの完全なUI。</li>
-                  <li>bounded readのページング（上限到達時はfallback不可）。</li>
+                  <li>bounded owner readはcursor pageと次ページprobeで完全性を確認。</li>
                 </ul>
               </Panel>
             </div>
@@ -304,8 +304,8 @@ export default function DevDocPage() {
   observationId: string;
   uid: string;
   position: number; // 集合内の順序
+  schemaVersion: '2.0.0';
   createdAt: string;
-  updatedAt: string;
 }`}</pre>
                 </div>
                 <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 shadow-sm">
@@ -407,7 +407,7 @@ interface NormalizedObservationCache {
                   <li><code>imagePath</code>は将来のStorage path用。uploadは未実装。</li>
                   <li>cache keyはprincipal別の <code>observer-2.normalized-cache.v2.&lt;uid&gt;</code>。</li>
                   <li>mine-feedとattachment-pickerを別snapshotとして保存し、principal・保存時刻・query limit・件数・completeを検証する。</li>
-                  <li>bounded queryがlimit件に達したsnapshotは不完全としてfallbackに使わない。5分を超えたsnapshotも使わない。</li>
+                  <li>limit件に達したsnapshotは次ページprobeが空のときだけcompleteとしてfallbackに使う。5分を超えたsnapshotは使わない。</li>
                   <li>cacheも3種類のentity mapで、Viewを保存しない。</li>
                   <li>Firestoreの1 MiB制限に対する画像サイズ保証は未実装。</li>
                 </ul>
@@ -484,7 +484,7 @@ interface NormalizedObservationCache {
                 ))}
               </div>
               <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-6 text-amber-950">
-                <strong>残作業:</strong> bounded readのページング、実Firestore/Authでの手動受入れ。
+                <strong>残作業:</strong> 実Firestore/Authでの手動受入れ。
               </div>
             </Panel>
           </div>
@@ -587,17 +587,16 @@ npm run test:firestore:emulator  # Java 21`}</pre>
             <div className="grid gap-5 lg:grid-cols-2">
               <Panel title="完了までの見積り" icon={<Clock3 className="h-5 w-5 text-amber-600" />}>
                 <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-                  <div className="font-mono text-3xl font-extrabold text-blue-900">4 iterations</div>
+                  <div className="font-mono text-3xl font-extrabold text-blue-900">3 iterations</div>
                   <div className="mt-1 text-xs font-bold text-blue-800">この文書・/dev変更がmainへ反映された後</div>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-slate-600">
-                  PR #13反映後の基準では、この変更を含めて5回、ここからさらに4回です。妥当範囲は以後3〜6回。import方針の決定速度と手動検証で見つかる不具合数が主な不確実性です。
+                  PR #13反映後の基準では、この変更を含めて6回、ここからさらに3回です。妥当範囲は以後2〜5回。import方針の決定速度と手動検証で見つかる不具合数が主な不確実性です。
                 </p>
               </Panel>
               <Panel title="推奨する残りの順序" icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}>
                 <ol className="list-decimal space-y-2 pl-5 text-sm leading-6 text-slate-600">
                   <li>Firestore importのownership・conflict・atomicity・receipt方針。</li>
-                  <li>bounded readのページングとfallback境界の最終確認。</li>
                   <li>実Firestore/AuthでのM01〜M03と<code>/test</code>受入れ。</li>
                   <li>累積台帳、全CI、最終tree closeout。</li>
                 </ol>

@@ -34,7 +34,7 @@ One **iteration** in the estimate means one bounded change cycle:
 | WP04 | Security Rules and external Emulator tests | **implemented** | Rules enforce owner/shape/relation/time invariants; JDK 21 Actions passed | Preserve emulator pass for final release tree |
 | WP05 | UI | **implemented** | Existing-observation picker, attach, membership-only detach, set ACL and soft delete, explicit composite-capture mode | Execute M01–M03 and verify multi-observation usability |
 | WP06 | Interchange 2.0.0 and v1 policy | **partial** | JSON Schema, semantic codec, deterministic round-trip, owner export/download, no-write import dry-run, collision/ownership report, size limits | Decide and implement authorized Firestore import commit path |
-| WP07 | Legacy removal and final validation | **partial** | v1 write/read removal, fresh-empty read policy, strict remote integrity error, typed read failures, scope-bound complete snapshots, principal-scoped five-minute cache, no-partial relation reads, visible UI error state, hardened Rules | Real-surface manual acceptance, pagination beyond bounded reads, final acceptance record |
+| WP07 | Legacy removal and final validation | **partial** | v1 write/read removal, fresh-empty read policy, strict remote integrity error, typed read failures, cursor-paged scope-bound complete snapshots, principal-scoped five-minute cache, no-partial relation reads, visible UI error state, hardened Rules | Real-surface manual acceptance, final acceptance record |
 
 The implementation evidence above does not mean the entire application roadmap
 is complete. It evaluates the WP00–WP07 many-to-many data-model program only.
@@ -61,7 +61,8 @@ The following behaviors have automated coverage:
 - successful empty reads overriding stale cache;
 - malformed remote data surfacing as `RemoteDataIntegrityError`.
 - bounded-read snapshots record scope, principal, limit, result count, and
-  completeness; exact-limit snapshots cannot be used as fallback;
+  completeness; cursor pagination and a next-page probe distinguish an
+  exhausted exact-limit result from an incomplete prefix;
 
 ## 4. Remaining work, in recommended order
 
@@ -115,11 +116,14 @@ Completed in the current change:
   policy;
 - relation-query failures abort a projection, while independently inaccessible
   observation endpoints are redacted;
+- bounded owner reads use cursor pages and a next-page probe; remote-required
+  exchange reads reject a non-empty page beyond the 1,000-record bound;
+- complete snapshots may be used at the exact configured limit only when the
+  next-page probe confirms exhaustion;
 - regression tests.
 
 Remaining in this package:
 
-- pagination beyond the bounded query limit;
 - final acceptance on the real application surfaces.
 
 ### Iteration 5 — manual WP05 acceptance and `/test`
@@ -156,10 +160,10 @@ Deliver:
 
 The central estimate from the PR #13 baseline is:
 
-- **5 iterations total after PR #13**;
-- **4 further iterations after this change is applied by AI Studio**.
+- **6 iterations total after PR #13**;
+- **3 further iterations after this change is applied by AI Studio**.
 
-Reasonable range after this change: **3–6 further iterations**.
+Reasonable range after this change: **2–5 further iterations**.
 
 The lower bound assumes the import ownership/conflict policy is decided before
 implementation and manual checks find no material defect. The upper bound

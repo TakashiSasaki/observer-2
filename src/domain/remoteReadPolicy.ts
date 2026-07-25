@@ -17,6 +17,27 @@ export function isRemoteDataIntegrityError(error: unknown): error is RemoteDataI
   return error instanceof RemoteDataIntegrityError;
 }
 
+/**
+ * A bounded remote query reached its configured maximum and a probe found
+ * another matching document. This is a completeness failure, not a transport
+ * failure, so cache fallback must never hide it.
+ */
+export class RemoteReadLimitError extends Error {
+  readonly collection: string;
+  readonly maximumResults: number;
+
+  constructor(collection: string, maximumResults: number) {
+    super(`Remote read for ${collection} exceeded the bounded maximum of ${maximumResults} records.`);
+    this.name = 'RemoteReadLimitError';
+    this.collection = collection;
+    this.maximumResults = maximumResults;
+  }
+}
+
+export function isRemoteReadLimitError(error: unknown): error is RemoteReadLimitError {
+  return error instanceof RemoteReadLimitError;
+}
+
 export type RemoteReadFailureKind =
   | 'unavailable'
   | 'deadline-exceeded'

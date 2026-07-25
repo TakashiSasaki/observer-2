@@ -305,11 +305,13 @@ fallback snapshot is stored separately for each eligible scope:
 
 Each snapshot metadata record contains `principalUid`, `scope`, `storedAt`,
 `resultLimit`, `resultCount`, and `complete`. A successful bounded read is
-complete only when `resultCount < resultLimit`; reaching the limit is treated as
-incomplete because more records may exist. A fallback request may use only a
-fresh complete snapshot for the same scope and principal whose recorded limit
-is at least the requested limit. There is no pagination yet, so an incomplete
-bounded read fails rather than presenting an unverified partial snapshot.
+read in cursor pages of at most 100 documents. When the configured maximum is
+reached, a next-page probe determines whether more matching records exist.
+`complete` is true only when that probe is empty, so an exact-limit result can
+be complete when the remote collection is exhausted. A fallback request may
+use only a fresh complete snapshot for the same scope and principal whose
+recorded limit is at least the requested limit. A remote-required exchange read
+fails rather than exporting an incomplete bounded prefix.
 
 Successful entity mutations invalidate both owner snapshot scopes. Shared,
 authenticated, and public feeds do not use stale cache fallback because cached
@@ -380,8 +382,9 @@ The application provides an owner-scoped export/download and a bounded import
 dry-run. The dry-run parses and semantically validates a file, compares it with
 the current owner's canonical records, reports counts/references/deletions,
 classifies identical versus conflicting IDs, rejects foreign owners, and never
-writes to Firestore. The current limits are 2,000,000 UTF-8 bytes and 1,000
-total records across the three arrays.
+writes to Firestore. Owner-scoped source reads use cursor pages and reject a
+non-empty page beyond the exchange bound. The current limits are 2,000,000
+UTF-8 bytes and 1,000 total records across the three arrays.
 
 A persistence importer still needs explicit decisions for:
 

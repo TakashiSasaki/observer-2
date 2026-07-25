@@ -153,11 +153,12 @@ test('restored developer documentation describes the normalized model without re
   assert.match(developerPage, /禁止するlegacy形状/);
   assert.doesNotMatch(developerPage, /ハイブリッドモデル（現在採用中）/);
   assert.doesNotMatch(developerPage, /展開済みキャッシュを保持/);
+  assert.doesNotMatch(developerPage, /position: number; \/\/ 集合内の順序\n  createdAt: string;\n  updatedAt: string;/);
 
   assert.match(contract, /ObservationSetMembership/);
   assert.match(contract, /Never send a view to a Firestore entity converter/);
   assert.match(contract, /not currently specified as RFC 8785 JCS/);
-  assert.match(workPackages, /4 further iterations after this change/);
+  assert.match(workPackages, /3 further iterations after this change/);
   assert.match(workPackages, /WP06.*\*\*partial\*\*/);
   assert.match(auditReadme, /not the\s+current implementation status/);
 });
@@ -199,6 +200,7 @@ test('remote reads use typed failures, principal-scoped cache, and current-reque
   const specification = fs.readFileSync(path.join(root, 'docs/application-specification.md'), 'utf8');
 
   assert.match(remotePolicy, /class RemoteReadError/);
+  assert.match(remotePolicy, /class RemoteReadLimitError/);
   assert.match(remotePolicy, /isRecoverableRemoteReadError/);
   assert.match(cachePolicy, /NORMALIZED_CACHE_MAX_AGE_MS/);
   assert.match(cachePolicy, /isFreshCompleteNormalizedCacheSnapshot/);
@@ -208,6 +210,9 @@ test('remote reads use typed failures, principal-scoped cache, and current-reque
   assert.match(service, /LOCAL_STORAGE_SNAPSHOT_KEY_PREFIX/);
   assert.match(service, /saveLocalCacheSnapshot/);
   assert.match(service, /invalidateLocalCacheSnapshots/);
+  assert.match(service, /fetchBoundedQueryDocuments/);
+  assert.match(service, /startAfter/);
+  assert.match(service, /REMOTE_QUERY_PAGE_SIZE/);
   assert.match(service, /remote-required/);
   assert.match(service, /filterMode === 'mine'/);
   assert.match(service, /permission-denied.*not-found/);
@@ -218,7 +223,8 @@ test('remote reads use typed failures, principal-scoped cache, and current-reque
   assert.match(detailModal, /再試行/);
   assert.match(specification, /five-minute freshness/);
   assert.match(specification, /resultLimit/);
-  assert.match(specification, /exact-limit/);
+  assert.match(specification, /cursor pages/);
+  assert.match(specification, /next\s+page/);
 });
 
 test('the /test surface is an in-memory acceptance harness and is not a Firestore write path', () => {

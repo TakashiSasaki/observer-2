@@ -123,7 +123,9 @@ planes for pull requests targeting `main`.
 - The app can export the owner's active canonical records and download a
   deterministic 2.0.0 JSON bundle. It also provides an import dry-run that
   validates structure, semantics, ownership, references, deletions, collisions,
-  and practical size limits without writing to Firestore. The authorized
+  and practical size limits without writing to Firestore. Owner-scoped remote
+  reads use cursor pages and reject an export source that exceeds the bounded
+  1,000-record limit rather than exporting a partial bundle. The authorized
   Firestore import commit path is not yet implemented.
 - Entity deletion is a soft delete. Detaching an observation physically deletes
   only its membership.

@@ -74,8 +74,10 @@ status ledger. See `audit/m2m/README.md`.
 14. A remote-required operation, including interchange export and import
     dry-run, must fail rather than use a possibly incomplete local cache.
 15. A cache fallback snapshot must be bound to its feed scope and principal.
-    A bounded query whose result count reaches its limit is incomplete and
-    cannot be used as fallback; successful mutations invalidate such snapshots.
+    Bounded reads use cursor pages and a next-page probe. A snapshot is
+    complete only when the probe confirms that no more matching records exist;
+    a maximum reached with another page is incomplete and cannot be used as
+    fallback. Successful mutations invalidate such snapshots.
 
 ## Forbidden legacy behavior
 

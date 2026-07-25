@@ -42,11 +42,18 @@ import {
   Compass,
   AlertTriangle,
 } from 'lucide-react';
-import { isRemoteDataIntegrityError, isRemoteReadError } from '../domain/remoteReadPolicy';
+import {
+  isRemoteDataIntegrityError,
+  isRemoteReadError,
+  isRemoteReadLimitError,
+} from '../domain/remoteReadPolicy';
 
 function attachmentCandidatesErrorMessage(error: unknown): string {
   if (isRemoteDataIntegrityError(error)) {
     return 'Firestoreのv2データ契約に違反する記録を検出しました。追加候補を表示していません。データを修正した後に再試行してください。';
+  }
+  if (isRemoteReadLimitError(error)) {
+    return `追加候補が上限${error.maximumResults}件を超えています。候補を完全には取得できないため、検索条件を狭めるか再試行してください。`;
   }
   if (isRemoteReadError(error)) {
     switch (error.kind) {
