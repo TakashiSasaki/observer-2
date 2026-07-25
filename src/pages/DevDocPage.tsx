@@ -96,7 +96,7 @@ export default function DevDocPage() {
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
           <h2 className="text-lg font-bold text-amber-950">v1データの扱い</h2>
           <p className="mt-2 text-sm leading-6 text-amber-900">
-            v1 Firestoreデータの移行・読取り方針は未決定です。v2クライアントは <code>parentSetId</code>、埋込み <code>observations</code>、正本としての <code>observationIds</code> を書き込みません。交換形式は <code>schemas/observation-interchange.schema.json</code> の2.0.0三配列表現を使用します。
+            現在のデータ数はゼロのため、v1 Firestoreデータの移行・読取り互換・インポート互換は実装しません。v2クライアントは <code>parentSetId</code>、埋込み <code>observations</code>、正本としての <code>observationIds</code> を書き込まず、交換形式も <code>schemas/observation-interchange.schema.json</code> の2.0.0三配列表現だけを受理します。
           </p>
         </section>
       </section>

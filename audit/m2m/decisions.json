@@ -7,5 +7,5 @@
   "setDeletionCascadesToObservations": false,
   "aclModel": "independent",
   "membershipPositionTieBreaker": "membership-document-id",
-  "v1FirestoreDataPolicy": "pending-user-decision"
+  "v1FirestoreDataPolicy": "not-required-current-data-empty"
 }
