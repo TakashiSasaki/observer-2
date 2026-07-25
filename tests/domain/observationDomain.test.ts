@@ -29,8 +29,17 @@ import {
   type ObservationSetView,
 } from '../../src/types.ts';
 import {
+  isFreshNormalizedCacheSnapshot,
+  NORMALIZED_CACHE_MAX_AGE_MS,
+} from '../../src/domain/cachePolicy.ts';
+import { runObservationAcceptanceHarness } from '../../src/domain/observationAcceptanceHarness.ts';
+import {
+  classifyRemoteReadError,
   isRemoteDataIntegrityError,
+  isRecoverableRemoteReadError,
+  isRemoteReadError,
   RemoteDataIntegrityError,
+  RemoteReadError,
   selectRemoteResult,
   withRemoteDataIntegrity,
 } from '../../src/domain/remoteReadPolicy.ts';
@@ -59,6 +68,48 @@ test('remote data integrity errors are not treated as recoverable read failures'
   if (!(thrown instanceof RemoteDataIntegrityError)) return;
   assert.match(thrown.message, /Observation bad-id violates the v2 Firestore data contract/);
   assert.equal(thrown.originalError, cause);
+});
+
+test('remote read failures are classified and only transient transport failures are recoverable', () => {
+  const unavailable = classifyRemoteReadError(Object.assign(new Error('temporary outage'), { code: 'unavailable' }));
+  const permissionDenied = classifyRemoteReadError(Object.assign(new Error('forbidden'), { code: 'permission-denied' }));
+  const unknown = classifyRemoteReadError(new Error('programming error'));
+
+  assert.ok(unavailable instanceof RemoteReadError);
+  assert.equal(isRemoteReadError(unavailable), true);
+  assert.equal(unavailable.kind, 'unavailable');
+  assert.equal(isRecoverableRemoteReadError(unavailable), true);
+  assert.equal(permissionDenied.kind, 'permission-denied');
+  assert.equal(isRecoverableRemoteReadError(permissionDenied), false);
+  assert.equal(unknown.kind, 'unknown');
+  assert.equal(isRecoverableRemoteReadError(unknown), false);
+  assert.equal(classifyRemoteReadError(unavailable), unavailable);
+});
+
+test('normalized cache freshness is bound to the producing principal and a finite age', () => {
+  const now = 10_000;
+  const metadata = { principalUid: 'owner-a', storedAt: now - 1_000 };
+
+  assert.equal(isFreshNormalizedCacheSnapshot(metadata, 'owner-a', now), true);
+  assert.equal(isFreshNormalizedCacheSnapshot(metadata, 'owner-b', now), false);
+  assert.equal(isFreshNormalizedCacheSnapshot({ ...metadata, storedAt: now - NORMALIZED_CACHE_MAX_AGE_MS - 1 }, 'owner-a', now), false);
+  assert.equal(isFreshNormalizedCacheSnapshot({ ...metadata, storedAt: now + 1 }, 'owner-a', now), false);
+  assert.equal(isFreshNormalizedCacheSnapshot({ principalUid: 'owner-a', storedAt: 'old' }, 'owner-a', now), false);
+});
+
+test('the in-memory acceptance harness passes M01 through M03 without persistence', () => {
+  const result = runObservationAcceptanceHarness();
+
+  assert.deepEqual(result.checks.map((check) => [check.id, check.passed]), [
+    ['M01', true],
+    ['M02', true],
+    ['M03', true],
+  ]);
+  assert.equal(result.log.length, 4);
+  assert.equal(result.snapshots.afterM01.membershipIds.length, 2);
+  assert.equal(result.snapshots.afterM02.membershipIds.length, 1);
+  assert.equal(result.snapshots.afterM03.activeObservationIds.length, 1);
+  assert.equal(result.snapshots.afterM03.projectedSetIds.length, 1);
 });
 
 function observation(overrides: Partial<Observation> = {}): Observation {

@@ -87,7 +87,7 @@ The accepted interface-surface vocabulary is:
 | admin | `/admin` | Reserved | Administration, audit, and any legacy read-only browser/export tools |
 | dev | `/dev` | Implemented | Internal developer documentation, data model, security, runtime, and WP status |
 | api | `/api` | Partial | `/api/health`, `/api/analyze-object`, and `/api/analyze-ocr` are runtime endpoints; an external contract must use versioned subpaths such as `/api/v1/...` |
-| test | `/test` | Reserved | Interactive vertical-slice and manual acceptance harness |
+| test | `/test` | Implemented | In-memory M01–M03 vertical-slice and manual acceptance harness; no Firestore writes |
 
 The surface vocabulary is independent of directory names and CLI command
 layout. New pages must preserve the responsibility boundary. For example,
@@ -239,7 +239,9 @@ views after reading them.
 
 ## 9. Remote read and cache policy
 
-The cache key is `observer-2.normalized-cache.v2`.
+The normalized records use a principal-scoped key of the form
+`observer-2.normalized-cache.v2.<encoded-principal-uid>`, with a separate
+metadata key for the producing principal and last snapshot time.
 
 - A successful remote result is authoritative, including an empty array.
 - A successful empty result must not resurrect stale cached records.
@@ -247,18 +249,24 @@ The cache key is `observer-2.normalized-cache.v2`.
   `RemoteDataIntegrityError`.
 - A data-integrity error must reach the caller and must not trigger stale-cache
   fallback.
-- Other read failures currently log a warning and may use normalized local
-  cache data.
+- Remote failures are classified before fallback. Only unavailable,
+  deadline-exceeded, aborted, and cancelled failures are recoverable.
+- A recoverable failure may use a matching cache snapshot only for the owner's
+  `mine` feed and attachment picker, and only within a five-minute freshness
+  window. Shared, authenticated, and public feeds require a current remote
+  read so stale ACLs cannot expose revoked records.
+- Exchange export and import dry-run require remote reads; an incomplete cache
+  cannot be exported or used as the comparison baseline.
 
 Current limitations:
 
-- transport, permission, and availability failures are not yet classified into
-  a narrow typed error policy;
-- the cache has no TTL or complete-snapshot/reconciliation marker;
-- attachment-picker failures and some partial reads still share a generic UI
-  error path;
-- per-set membership and per-observation read failures can produce a partial
-  remote projection.
+- the cache has freshness metadata but no complete-snapshot/reconciliation
+  marker;
+- attachment-picker failures still share a generic UI error path except for
+  explicit integrity violations;
+- permission-denied or not-found observation endpoints are redacted as an
+  expected consequence of independent ACLs, while membership-query or
+  transport failures abort the projection; pagination remains future work.
 
 These limitations are tracked in `docs/work-packages.md`.
 
@@ -324,5 +332,6 @@ as ad hoc fields to observation schema 2.0.0.
 - production-ready binary storage;
 - a complete external versioned API;
 - production-ready import writes;
-- implemented `/admin` and `/test` surfaces;
+- a production-connected `/admin` surface;
+- recording the real Firestore/Auth M01–M03 acceptance beyond the in-memory `/test` harness;
 - completing the later Object/Marker domain inside schema 2.0.0.

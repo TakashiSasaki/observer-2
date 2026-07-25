@@ -293,8 +293,17 @@ Remote selection policy:
 - `[]` means the remote read succeeded with no results and is authoritative;
 - malformed remote data raises `RemoteDataIntegrityError`;
 - an integrity error is rethrown and never replaced by cached data.
+- provider read failures are classified. Only unavailable, deadline-exceeded,
+  aborted, and cancelled failures are recoverable; permission, not-found,
+  failed-precondition, quota, and unknown failures are not silently hidden.
 
-The cache is a fallback, not a full synchronized database or migration source.
+The cache is principal-scoped and its metadata expires after five minutes. It is
+eligible as a fallback only for the owner's `mine` feed and attachment picker.
+Shared, authenticated, and public feeds do not use stale cache fallback because
+cached ACLs are not an authorization source. Interchange export and import
+dry-run require remote reads and therefore cannot silently operate on an
+incomplete cache. The cache is not a full synchronized database or migration
+source.
 
 ## 8. Interchange bundle
 

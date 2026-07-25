@@ -46,7 +46,7 @@ is a product contract, not a required mirror of the source directory layout.
 | admin | `/admin` | Reserved | Administration, audit, and legacy read-only tools |
 | dev | `/dev` | Implemented | Internal implementation documentation and status |
 | api | `/api` | Partial | Runtime AI endpoints exist; external APIs must use versioned subpaths such as `/api/v1` |
-| test | `/test` | Reserved | Interactive vertical-slice and acceptance-test surface |
+| test | `/test` | Implemented | In-memory M01–M03 vertical-slice and acceptance-test surface; no Firestore writes |
 
 Do not silently repurpose one surface for another responsibility.
 

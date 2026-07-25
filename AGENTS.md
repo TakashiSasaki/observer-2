@@ -26,6 +26,8 @@ one.
 | Canonical TypeScript entities | `src/types.ts` |
 | Entity and cross-record invariants | `src/domain/observationDomain.ts` |
 | Normalized local cache | `src/domain/normalizedObservationCache.ts` |
+| Cache principal/freshness policy | `src/domain/cachePolicy.ts` |
+| Remote read failure policy | `src/domain/remoteReadPolicy.ts` |
 | Interchange semantics and deterministic serialization | `src/domain/observationInterchange.ts` |
 | Interchange structural schema | `schemas/observation-interchange.schema.json` |
 | Firestore conversion and operations | `src/services/firebaseService.ts` |
@@ -36,6 +38,7 @@ one.
 | Executable acceptance evidence | `tests/` and `.github/workflows/m2m-baseline.yml` |
 | Product behavior and interface surfaces | `docs/application-specification.md` |
 | Current WP status | `docs/work-packages.md` |
+| In-memory M01–M03 acceptance harness | `src/domain/observationAcceptanceHarness.ts`, `src/pages/TestPage.tsx` |
 
 `audit/m2m/progress.json` and `audit/m2m/handoff.json` are the frozen WP00 A8
 baseline required by the audit harness. They are not the current WP01–WP07
@@ -65,6 +68,11 @@ status ledger. See `audit/m2m/README.md`.
     stale cache data.
 12. Malformed remote v2 data raises `RemoteDataIntegrityError`; it must not be
     hidden by cache fallback.
+13. A cache fallback is allowed only for a fresh, principal-scoped owner (`mine`)
+    snapshot after a classified transient read failure. It is never an
+    authorization source for shared or public feeds.
+14. A remote-required operation, including interchange export and import
+    dry-run, must fail rather than use a possibly incomplete local cache.
 
 ## Forbidden legacy behavior
 
