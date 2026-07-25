@@ -28,8 +28,14 @@ import {
   type ObservationSetMembership,
   type ObservationSetView,
 } from '../../src/types.ts';
+import { selectRemoteResult } from '../../src/domain/remoteReadPolicy.ts';
 
 const createdAt = '2026-07-24T12:00:00.000Z';
+
+test('a successful empty remote read does not fall back to stale cache data', () => {
+  assert.deepEqual(selectRemoteResult([], () => ['stale']), []);
+  assert.deepEqual(selectRemoteResult(undefined, () => ['stale']), ['stale']);
+});
 
 function observation(overrides: Partial<Observation> = {}): Observation {
   return {

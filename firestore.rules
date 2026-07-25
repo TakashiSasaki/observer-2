@@ -56,6 +56,23 @@ service cloud.firestore {
       ]);
     }
 
+    function validLocation(location) {
+      return location == null || (
+        location is map
+        && location.keys().hasAll(['latitude', 'longitude'])
+        && location.keys().hasOnly(['latitude', 'longitude', 'accuracy', 'address'])
+        && location.latitude is number
+        && location.latitude >= -90
+        && location.latitude <= 90
+        && location.longitude is number
+        && location.longitude >= -180
+        && location.longitude <= 180
+        && (!location.keys().hasAny(['accuracy'])
+          || (location.accuracy is number && location.accuracy >= 0))
+        && (!location.keys().hasAny(['address']) || location.address is string)
+      );
+    }
+
     function commonEntityFieldsAreValid(data, documentId) {
       return data.id == documentId
         && isUuidV7(data.id)
@@ -68,7 +85,7 @@ service cloud.firestore {
         && data.rawContent is string
         && (data.imageUrl == null || data.imageUrl is string)
         && (data.imagePath == null || data.imagePath is string)
-        && (data.location == null || data.location is map)
+        && validLocation(data.location)
         && data.visibility in ['public', 'authenticated', 'shared', 'private']
         && data.allowedEmails is list
         && (data.visibility == 'shared' || data.allowedEmails.size() == 0)
@@ -76,7 +93,8 @@ service cloud.firestore {
         && data.schemaVersion == '2.0.0'
         && data.createdAt is timestamp
         && data.updatedAt is timestamp
-        && (data.deletedAt == null || data.deletedAt is timestamp);
+        && data.updatedAt >= data.createdAt
+        && (data.deletedAt == null || (data.deletedAt is timestamp && data.deletedAt >= data.createdAt));
     }
 
     function validNewObservation(data, observationId) {
@@ -91,6 +109,7 @@ service cloud.firestore {
         && hasOnlyObservationKeys(data)
         && commonEntityFieldsAreValid(data, observationId)
         && resource.data.deletedAt == null
+        && request.resource.data.updatedAt >= resource.data.updatedAt
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'observerName', 'observerPhoto', 'type', 'title', 'summary', 'rawContent',
           'imageUrl', 'imagePath', 'location', 'visibility', 'allowedEmails', 'metadata',
@@ -114,6 +133,7 @@ service cloud.firestore {
         && commonEntityFieldsAreValid(data, observationSetId)
         && data.tags is list
         && resource.data.deletedAt == null
+        && request.resource.data.updatedAt >= resource.data.updatedAt
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'observerName', 'observerPhoto', 'type', 'title', 'summary', 'rawContent',
           'imageUrl', 'imagePath', 'location', 'visibility', 'allowedEmails', 'tags', 'metadata',
