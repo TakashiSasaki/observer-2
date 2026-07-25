@@ -34,7 +34,7 @@ One **iteration** in the estimate means one bounded change cycle:
 | WP04 | Security Rules and external Emulator tests | **implemented** | Rules enforce owner/shape/relation/time invariants; JDK 21 Actions passed | Preserve emulator pass for final release tree |
 | WP05 | UI | **implemented** | Existing-observation picker, attach, membership-only detach, set ACL and soft delete, explicit composite-capture mode | Execute M01–M03 and verify multi-observation usability |
 | WP06 | Interchange 2.0.0 and v1 policy | **partial** | JSON Schema, semantic codec, deterministic round-trip, owner export/download, no-write import dry-run, collision/ownership report, size limits | Decide and implement authorized Firestore import commit path |
-| WP07 | Legacy removal and final validation | **partial** | v1 write/read removal, fresh-empty read policy, strict remote integrity error, visible UI error state, hardened Rules | Typed recoverable-read policy, principal-aware cache/reconciliation, final acceptance record |
+| WP07 | Legacy removal and final validation | **partial** | v1 write/read removal, fresh-empty read policy, strict remote integrity error, typed read failures, principal-scoped five-minute cache, no-partial relation reads, visible UI error state, hardened Rules | Complete-snapshot/reconciliation policy, manual acceptance, final acceptance record |
 
 The implementation evidence above does not mean the entire application roadmap
 is complete. It evaluates the WP00–WP07 many-to-many data-model program only.
@@ -102,26 +102,37 @@ Emulator tests, and UI/API integration.
 
 ### Iteration 4 — remote-read and cache hardening
 
-Deliver:
+Completed in the current change:
 
 - typed distinction among transport/unavailable, permission, not-found, and
-  integrity failures;
+- integrity failures;
 - fallback only for explicitly recoverable failures;
-- a dedicated user-visible integrity/error state for every relevant read path;
-- prevent a failed filter change from leaving an unrelated previous view
-  presented as current;
-- principal-aware cache handling and a documented stale-data policy;
-- define behavior for partial membership/observation read failures;
+- prevent a failed or out-of-order filter change from leaving an unrelated
+  previous view presented as current;
+- principal-aware, five-minute cache handling and a documented stale-data
+  policy;
+- relation-query failures abort a projection, while independently inaccessible
+  observation endpoints are redacted;
 - regression tests.
+
+Remaining in this package:
+
+- complete-snapshot/reconciliation markers for bounded or paginated reads;
+- a more specific attachment-picker error presentation;
+- final acceptance on the real application surfaces.
 
 ### Iteration 5 — manual WP05 acceptance and `/test`
 
-Implement the reserved `/test` vertical slice or an equivalent reproducible
-manual harness and record:
+The current change implements a reproducible in-memory `/test` vertical slice
+using the normalized cache and projection functions. It records the following
+checks without connecting to Firestore:
 
 - M01: attach one observation to sets A and B;
 - M02: detach from A while the observation and B membership remain;
 - M03: change/delete the set without changing observation content or ACL.
+
+The remaining acceptance activity is to run the same checks against the real
+authenticated UI and Firestore Emulator/application data:
 
 Also cover anonymous versus non-anonymous sharing, offline fallback, empty
 remote results, malformed remote data, and starting/saving a multi-observation

@@ -4,6 +4,7 @@ import LandingPage from './pages/LandingPage';
 import AppPage from './pages/AppPage';
 import DevDocPage from './pages/DevDocPage';
 import TypesDocPage from './pages/TypesDocPage';
+import TestPage from './pages/TestPage';
 
 export default function App() {
   return (
@@ -13,6 +14,7 @@ export default function App() {
         <Route path="/app" element={<AppPage />} />
         <Route path="/dev" element={<DevDocPage />} />
         <Route path="/dev/types" element={<TypesDocPage />} />
+        <Route path="/test" element={<TestPage />} />
       </Routes>
     </BrowserRouter>
   );

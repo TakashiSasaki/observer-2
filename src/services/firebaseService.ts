@@ -45,7 +45,12 @@ import {
   mergeNormalizedObservationCache,
 } from '../domain/normalizedObservationCache';
 import {
+  isFreshNormalizedCacheSnapshot,
+} from '../domain/cachePolicy';
+import {
+  classifyRemoteReadError,
   isRemoteDataIntegrityError,
+  isRecoverableRemoteReadError,
   selectRemoteResult,
   withRemoteDataIntegrity,
 } from '../domain/remoteReadPolicy';
@@ -68,8 +73,10 @@ import {
 import { processImageToWebP } from '../utils/imageUtils';
 import { generateId } from '../utils/idUtils';
 
-const LOCAL_STORAGE_KEY = 'observer-2.normalized-cache.v2';
+const LOCAL_STORAGE_KEY_PREFIX = 'observer-2.normalized-cache.v2.';
+const LOCAL_STORAGE_METADATA_KEY_PREFIX = 'observer-2.normalized-cache-meta.v2.';
 const MAX_NEW_MEMBERSHIPS_PER_CLIENT_BATCH = 9;
+type RemoteReadMode = 'cache-fallback' | 'remote-required';
 
 // User Auth Helpers
 export async function loginWithGoogle(): Promise<ObserverUser> {
@@ -185,9 +192,31 @@ function toFirestoreQueryConstraints(plan: FirestoreQueryPlan): QueryConstraint[
   return constraints;
 }
 
-function getLocalCache(): NormalizedObservationCache {
+function cachePrincipalUid(principalUid?: string): string {
+  const explicitPrincipal = principalUid?.trim();
+  if (explicitPrincipal) return explicitPrincipal;
+  const authenticatedPrincipal = auth.currentUser?.uid?.trim();
+  return authenticatedPrincipal || 'anonymous';
+}
+
+function cacheStorageKey(prefix: string, principalUid?: string): string {
+  return `${prefix}${encodeURIComponent(cachePrincipalUid(principalUid))}`;
+}
+
+function hasFreshLocalCacheSnapshot(principalUid?: string): boolean {
+  const principal = cachePrincipalUid(principalUid);
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    const raw = localStorage.getItem(cacheStorageKey(LOCAL_STORAGE_METADATA_KEY_PREFIX, principal));
+    if (!raw) return false;
+    return isFreshNormalizedCacheSnapshot(JSON.parse(raw), principal);
+  } catch {
+    return false;
+  }
+}
+
+function getLocalCache(principalUid?: string): NormalizedObservationCache {
+  try {
+    const raw = localStorage.getItem(cacheStorageKey(LOCAL_STORAGE_KEY_PREFIX, principalUid));
     if (!raw) return emptyNormalizedObservationCache();
     const parsed = JSON.parse(raw) as unknown;
     assertNormalizedObservationCache(parsed);
@@ -197,10 +226,15 @@ function getLocalCache(): NormalizedObservationCache {
   }
 }
 
-function saveLocalCache(cache: NormalizedObservationCache): void {
+function saveLocalCache(cache: NormalizedObservationCache, principalUid?: string): void {
   try {
     assertNormalizedObservationCache(cache);
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cache));
+    const principal = cachePrincipalUid(principalUid);
+    localStorage.setItem(cacheStorageKey(LOCAL_STORAGE_KEY_PREFIX, principal), JSON.stringify(cache));
+    localStorage.setItem(
+      cacheStorageKey(LOCAL_STORAGE_METADATA_KEY_PREFIX, principal),
+      JSON.stringify({ principalUid: principal, storedAt: Date.now() }),
+    );
   } catch (error) {
     console.warn('LocalStorage save failed:', error);
   }
@@ -268,10 +302,11 @@ async function fetchMembershipsForSets(observationSets: ObservationSet[]): Promi
       memberships.push(...snapshot.docs.map((snapshotDoc) => membershipFromFirestore(snapshotDoc.id, snapshotDoc.data())));
     } catch (error) {
       if (isRemoteDataIntegrityError(error)) throw error;
-      // A set may be visible while an individual observation remains private.
-      // Membership IDs are readable with the set; inaccessible observations are
-      // excluded below when their own document read is denied.
-      console.warn(`Membership query failed for set ${observationSet.id}:`, error);
+      // A set that was successfully read should also permit its membership
+      // query. Do not silently turn a failed relation read into a partial view;
+      // the caller may still choose a bounded cache fallback for a recoverable
+      // transport failure.
+      throw classifyRemoteReadError(error);
     }
   }
   return memberships;
@@ -286,8 +321,14 @@ async function fetchReadableObservations(memberships: ObservationSetMembership[]
     } catch (error) {
       if (isRemoteDataIntegrityError(error)) throw error;
       // Independent ACL means a readable set does not make its observations readable.
-      console.warn(`Observation ${id} is not available in this view:`, error);
-      return null;
+      const classified = classifyRemoteReadError(error);
+      if (classified.kind === 'permission-denied' || classified.kind === 'not-found') {
+        console.warn(`Observation ${id} is not available in this view:`, classified);
+        return null;
+      }
+      // A transport failure is not an ACL redaction. Abort the projection so a
+      // partial remote result cannot be persisted or presented as complete.
+      throw classified;
     }
   }));
   return entries.filter((entry): entry is Observation => entry !== null);
@@ -356,8 +397,8 @@ export async function createObservation(draft: ObservationSetDraft): Promise<Obs
     await batch.commit();
   }
 
-  const updatedCache = mergeNormalizedObservationCache(getLocalCache(), { observationSets: [observationSet], observations, memberships });
-  saveLocalCache(updatedCache);
+  const updatedCache = mergeNormalizedObservationCache(getLocalCache(observationSet.uid), { observationSets: [observationSet], observations, memberships });
+  saveLocalCache(updatedCache, observationSet.uid);
   return buildObservationSetViews({ observationSets: [observationSet], observations, memberships })[0];
 }
 
@@ -367,24 +408,36 @@ export async function fetchObservations(
   currentUserUid?: string,
   currentUserEmail?: string,
   resultLimit?: number,
+  readMode: RemoteReadMode = 'cache-fallback',
 ): Promise<ObservationSetView[]> {
+  const principalUid = currentUserUid ?? auth.currentUser?.uid;
   let remoteViews: ObservationSetView[] | undefined;
   try {
     const views = await fetchFirestoreViews(filterMode, currentUserUid, currentUserEmail, resultLimit);
     remoteViews = views;
-    const cache = mergeNormalizedObservationCache(getLocalCache(), {
+    const cache = mergeNormalizedObservationCache(getLocalCache(principalUid), {
       observationSets: views,
       observations: views.flatMap((view) => view.observations),
       memberships: views.flatMap((view) => view.memberships),
     });
-    saveLocalCache(cache);
+    saveLocalCache(cache, principalUid);
   } catch (error) {
     if (isRemoteDataIntegrityError(error)) throw error;
-    console.warn('Firestore query error, using v2 local cache:', error);
+    const classified = classifyRemoteReadError(error);
+    if (readMode === 'remote-required' || !isRecoverableRemoteReadError(classified)) {
+      throw classified;
+    }
+    console.warn('Recoverable Firestore query error; evaluating the bounded v2 local cache:', classified);
   }
   return selectRemoteResult(
     remoteViews,
-    () => filterLocalViews(cacheViews(getLocalCache()), filterMode, currentUserUid, currentUserEmail),
+    () => (
+      filterMode === 'mine'
+      && Boolean(principalUid)
+      && hasFreshLocalCacheSnapshot(principalUid)
+        ? filterLocalViews(cacheViews(getLocalCache(principalUid)), filterMode, currentUserUid, currentUserEmail)
+        : []
+    ),
   );
 }
 
@@ -393,7 +446,11 @@ export async function fetchObservations(
  * to one of their ObservationSets. The query is deliberately owner-scoped;
  * feed visibility never acts as authority to create a Membership.
  */
-export async function fetchOwnedActiveObservations(ownerUid: string, resultLimit = 100): Promise<Observation[]> {
+export async function fetchOwnedActiveObservations(
+  ownerUid: string,
+  resultLimit = 100,
+  readMode: RemoteReadMode = 'cache-fallback',
+): Promise<Observation[]> {
   if (!auth.currentUser || auth.currentUser.uid !== ownerUid) {
     throw new Error('The signed-in user must own the Observation attachment candidates.');
   }
@@ -401,7 +458,7 @@ export async function fetchOwnedActiveObservations(ownerUid: string, resultLimit
   const plan = ownedObservationPickerQueryPlan(ownerUid, resultLimit);
   if (!plan) return [];
 
-  let cache = getLocalCache();
+  let cache = getLocalCache(ownerUid);
   let remoteObservations: Observation[] | undefined;
   try {
     const snapshot = await getDocs(query(
@@ -412,13 +469,20 @@ export async function fetchOwnedActiveObservations(ownerUid: string, resultLimit
       observationFromFirestore(snapshotDoc.id, snapshotDoc.data())
     ));
     cache = mergeNormalizedObservationCache(cache, { observations: remoteObservations });
-    saveLocalCache(cache);
+    saveLocalCache(cache, ownerUid);
   } catch (error) {
     if (isRemoteDataIntegrityError(error)) throw error;
-    console.warn('Owner Observation picker query failed, using v2 local cache:', error);
+    const classified = classifyRemoteReadError(error);
+    if (readMode === 'remote-required' || !isRecoverableRemoteReadError(classified)) {
+      throw classified;
+    }
+    console.warn('Recoverable owner Observation query error; evaluating the bounded v2 local cache:', classified);
   }
 
-  const observations = selectRemoteResult(remoteObservations, () => Object.values(cache.observations));
+  const observations = selectRemoteResult(
+    remoteObservations,
+    () => (hasFreshLocalCacheSnapshot(ownerUid) ? Object.values(cache.observations) : []),
+  );
   return observations
     .filter((observation) => observation.uid === ownerUid && observation.deletedAt === null)
     .sort((left, right) => (
@@ -443,8 +507,18 @@ function uniqueRecords<T extends { id: string }>(records: Iterable<T>): T[] {
  * observation picker; it never exports ObservationSetView as a record.
  */
 async function loadOwnedCanonicalRecords(ownerUid: string, ownerEmail?: string): Promise<OwnedCanonicalRecords> {
-  const views = await fetchObservations('mine', ownerUid, ownerEmail, MAX_INTERCHANGE_RECORDS);
-  const pickerObservations = await fetchOwnedActiveObservations(ownerUid, MAX_INTERCHANGE_RECORDS);
+  const views = await fetchObservations(
+    'mine',
+    ownerUid,
+    ownerEmail,
+    MAX_INTERCHANGE_RECORDS,
+    'remote-required',
+  );
+  const pickerObservations = await fetchOwnedActiveObservations(
+    ownerUid,
+    MAX_INTERCHANGE_RECORDS,
+    'remote-required',
+  );
   const observationSets = uniqueRecords(views)
     .map(({ observations: _observations, memberships: _memberships, ...observationSet }) => observationSet)
     .filter((observationSet) => observationSet.uid === ownerUid && observationSet.deletedAt === null);
@@ -531,8 +605,8 @@ export async function attachObservationToSet(observationSetId: string, observati
     transaction.set(membershipRef, membershipToFirestore(membership));
   });
 
-  const cache = mergeNormalizedObservationCache(getLocalCache(), { observationSets: [observationSet], observations: [observation], memberships: [membership] });
-  saveLocalCache(cache);
+  const cache = mergeNormalizedObservationCache(getLocalCache(auth.currentUser.uid), { observationSets: [observationSet], observations: [observation], memberships: [membership] });
+  saveLocalCache(cache, auth.currentUser.uid);
   return membership;
 }
 
@@ -544,8 +618,8 @@ export async function detachObservationFromSet(observationSetId: string, observa
   batch.delete(doc(db, FIRESTORE_COLLECTIONS.memberships, id));
   await batch.commit();
 
-  const cache = detachMembershipFromNormalizedObservationCache(getLocalCache(), observationSetId, observationId);
-  saveLocalCache(cache);
+  const cache = detachMembershipFromNormalizedObservationCache(getLocalCache(auth.currentUser.uid), observationSetId, observationId);
+  saveLocalCache(cache, auth.currentUser.uid);
 }
 
 /**
@@ -562,7 +636,7 @@ export async function updateObservation(
 ): Promise<void> {
   if (!auth.currentUser) throw new Error('Authentication required');
 
-  const cache = getLocalCache();
+  const cache = getLocalCache(auth.currentUser.uid);
   let current = cache.observations[id];
   if (!current) {
     const snapshot = await getDoc(doc(db, FIRESTORE_COLLECTIONS.observations, id));
@@ -595,7 +669,7 @@ export async function updateObservation(
   await batch.commit();
 
   cache.observations[id] = next;
-  saveLocalCache(cache);
+  saveLocalCache(cache, auth.currentUser.uid);
 }
 
 /** Changes only the set ACL. Observation ACLs remain independent by design. */
@@ -615,11 +689,11 @@ export async function updateObservationSetVisibility(
   });
   await batch.commit();
 
-  const cache = getLocalCache();
+  const cache = getLocalCache(auth.currentUser.uid);
   const current = cache.observationSets[id];
   if (current) {
     cache.observationSets[id] = { ...current, visibility: newVisibility, allowedEmails: sanitizedAllowedEmails, updatedAt: now };
-    saveLocalCache(cache);
+    saveLocalCache(cache, auth.currentUser.uid);
   }
 }
 
@@ -634,11 +708,11 @@ export async function softDeleteObservationSet(id: string): Promise<void> {
   });
   await batch.commit();
 
-  const cache = getLocalCache();
+  const cache = getLocalCache(auth.currentUser.uid);
   const current = cache.observationSets[id];
   if (current) {
     cache.observationSets[id] = { ...current, deletedAt: now, updatedAt: now };
-    saveLocalCache(cache);
+    saveLocalCache(cache, auth.currentUser.uid);
   }
 }
 
@@ -653,10 +727,10 @@ export async function softDeleteObservation(id: string): Promise<void> {
   });
   await batch.commit();
 
-  const cache = getLocalCache();
+  const cache = getLocalCache(auth.currentUser.uid);
   const current = cache.observations[id];
   if (current) {
     cache.observations[id] = { ...current, deletedAt: now, updatedAt: now };
-    saveLocalCache(cache);
+    saveLocalCache(cache, auth.currentUser.uid);
   }
 }

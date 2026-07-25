@@ -54,7 +54,7 @@ const surfaceRows = [
   { surface: 'admin', path: '/admin', status: '予約', role: '管理・監査' },
   { surface: 'dev', path: '/dev', status: '実装済み', role: '内部開発文書・状態' },
   { surface: 'api', path: '/api', status: '部分実装', role: '外部契約。machine APIは /api/vN 以下' },
-  { surface: 'test', path: '/test', status: '予約', role: 'バーチカルスライス検証' },
+  { surface: 'test', path: '/test', status: '実装済み', role: 'Firestore無書込のM01〜M03 in-memory受入れハーネス' },
 ];
 
 const workPackageRows = [
@@ -65,7 +65,7 @@ const workPackageRows = [
   { id: 'WP04', scope: 'Rules・Emulator', status: 'implemented', remaining: '最終treeでもJDK 21検証' },
   { id: 'WP05', scope: 'UI', status: 'implemented', remaining: 'M01〜M03とcomposite操作の手動受入' },
   { id: 'WP06', scope: '交換形式2.0.0', status: 'partial', remaining: 'Firestore import commitの方針と実装' },
-  { id: 'WP07', scope: 'legacy除去・最終検証', status: 'partial', remaining: 'typed read policy・cache硬化・closeout' },
+  { id: 'WP07', scope: 'legacy除去・最終検証', status: 'partial', remaining: 'reconciliation・手動受入・closeout' },
 ];
 
 const sourceRows = [
@@ -241,11 +241,11 @@ export default function DevDocPage() {
               <Panel title="現在未実装の提供面" icon={<Clock3 className="h-5 w-5 text-amber-600" />}>
                 <ul className="list-disc space-y-2 pl-5 text-sm leading-6 text-slate-600">
                   <li>衝突・所有権ポリシーを伴うFirestore import commit。</li>
-                  <li><code>/admin</code> と <code>/test</code>。</li>
+                  <li><code>/admin</code> と、実Firestore/Authへ接続した受入れ記録。</li>
                   <li>versioned external API <code>/api/vN</code>。</li>
                   <li>Cloud Storage upload・cleanup・URL lifecycle。</li>
                   <li>Observation更新・削除およびMembership並べ替えの完全なUI。</li>
-                  <li>transport / permission / not-foundのtyped recoverable-read policy。</li>
+                  <li>complete-snapshot/reconciliation markerとbounded readのpage処理。</li>
                 </ul>
               </Panel>
             </div>
@@ -404,7 +404,8 @@ interface NormalizedObservationCache {
                 <ul className="space-y-2 text-sm leading-6 text-slate-600">
                   <li>画像は最大1024×768、quality 0.85のWebP data URLへ変換。</li>
                   <li><code>imagePath</code>は将来のStorage path用。uploadは未実装。</li>
-                  <li>cache keyは <code>observer-2.normalized-cache.v2</code>。</li>
+                  <li>cache keyはprincipal別の <code>observer-2.normalized-cache.v2.&lt;uid&gt;</code>。</li>
+                  <li>cache metadataでprincipalと保存時刻を確認し、5分を超えたfallbackは使わない。</li>
                   <li>cacheも3種類のentity mapで、Viewを保存しない。</li>
                   <li>Firestoreの1 MiB制限に対する画像サイズ保証は未実装。</li>
                 </ul>
@@ -471,6 +472,8 @@ interface NormalizedObservationCache {
                   ['成功・データあり', 'remoteを採用し、正規化cacheを更新'],
                   ['成功・空配列', '空を正本として採用。stale cacheを復活させない'],
                   ['v2契約違反', 'RemoteDataIntegrityErrorを再送出。fallback禁止'],
+                  ['一時的通信障害', 'ownerのmineだけ、5分以内のprincipal-scoped cacheをfallbackに使う'],
+                  ['権限・未検出', '一般feedではエラー、Observation endpointだけACL redaction'],
                 ].map(([title, description]) => (
                   <div key={title} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <div className="text-xs font-bold text-slate-900">{title}</div>
@@ -479,7 +482,7 @@ interface NormalizedObservationCache {
                 ))}
               </div>
               <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-6 text-amber-950">
-                <strong>残作業:</strong> transport、permission、not-foundを型付きで分類し、recoverableな失敗だけをfallback対象にすること、cacheをprincipal-awareにしてreconciliation方針を定めること、partial readの扱いを確定すること。
+                <strong>残作業:</strong> complete-snapshot/reconciliation marker、bounded readのページング、attachment-pickerの専用エラー表示、手動受入れ。
               </div>
             </Panel>
           </div>

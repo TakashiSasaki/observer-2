@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebase';
 import { ObservationSetView, Observation, VisibilityType, ObservationType, ObserverUser } from '../types';
@@ -49,6 +49,7 @@ export default function AppPage() {
   const [observations, setObservations] = useState<ObservationSetView[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [dataLoadError, setDataLoadError] = useState<string | null>(null);
+  const loadSequence = useRef(0);
 
   // Filters & Views
   const [activeFilter, setActiveFilter] = useState<'mine' | 'shared' | 'authenticated' | 'public'>('mine');
@@ -91,10 +92,18 @@ export default function AppPage() {
 
   // Fetch observations whenever filter or user changes
   const loadData = async () => {
+    const requestId = ++loadSequence.current;
     setIsLoading(true);
     setDataLoadError(null);
+    // Do not leave a previous filter's records visible while this request is
+    // pending. A request that finishes out of order is ignored below.
+    setObservations([]);
+    setSelectedObservation(null);
+    setAttachmentCandidates([]);
+    setAttachmentCandidatesError(null);
     try {
       const items = await fetchObservations(activeFilter, currentUser?.uid, currentUser?.email);
+      if (requestId !== loadSequence.current) return;
       setObservations(items);
 
       // Check deep link query parameter ?obsId=...
@@ -107,6 +116,7 @@ export default function AppPage() {
         }
       }
     } catch (err) {
+      if (requestId !== loadSequence.current) return;
       console.error('Error loading observations:', err);
       // Never leave an earlier filter/view visible after a contract violation.
       // A stale list would make malformed v2 data look successfully loaded.
@@ -117,7 +127,7 @@ export default function AppPage() {
         ? 'Firestoreのv2データ契約に違反する記録を検出しました。古い一覧は表示していません。データを修正した後に再読み込みしてください。'
         : '観測データを読み込めませんでした。認証状態とネットワークを確認して再読み込みしてください。');
     } finally {
-      setIsLoading(false);
+      if (requestId === loadSequence.current) setIsLoading(false);
     }
   };
 
@@ -228,7 +238,9 @@ export default function AppPage() {
     } catch (error) {
       console.error('Failed to load attachable Observations:', error);
       setAttachmentCandidates([]);
-      setAttachmentCandidatesError('追加可能な観測を取得できませんでした。ネットワークと認証状態を確認してください。');
+      setAttachmentCandidatesError(isRemoteDataIntegrityError(error)
+        ? 'Firestoreのv2データ契約に違反する記録を検出しました。追加候補を表示していません。'
+        : '追加可能な観測を取得できませんでした。ネットワークと認証状態を確認してください。');
     } finally {
       setIsAttachmentCandidatesLoading(false);
     }

@@ -18,6 +18,7 @@ import {
   dryRunOwnedObservationInterchangeImport,
   exportOwnedObservationInterchangeBundle,
 } from '../services/firebaseService';
+import { isRemoteDataIntegrityError } from '../domain/remoteReadPolicy';
 import { CURRENT_SCHEMA_VERSION, type ObserverUser } from '../types';
 
 type Status = { tone: 'success' | 'error'; message: string } | null;
@@ -28,6 +29,13 @@ function errorMessage(error: unknown, fallback: string): string {
 
 function formatBytes(bytes: number): string {
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
+}
+
+function exchangeErrorMessage(error: unknown, fallback: string): string {
+  if (isRemoteDataIntegrityError(error)) {
+    return 'Firestoreのv2データ契約に違反する記録を検出しました。古いcacheをexchangeの結果として使っていません。';
+  }
+  return errorMessage(error, fallback);
 }
 
 export const ObservationExchangePanel: React.FC<{ currentUser: ObserverUser }> = ({ currentUser }) => {
@@ -57,7 +65,7 @@ export const ObservationExchangePanel: React.FC<{ currentUser: ObserverUser }> =
         message: `v${CURRENT_SCHEMA_VERSION} bundleをダウンロードしました（Observation ${bundle.observations.length}件、Set ${bundle.observationSets.length}件、Membership ${bundle.memberships.length}件）。`,
       });
     } catch (error) {
-      setStatus({ tone: 'error', message: `exportに失敗しました: ${errorMessage(error, '所有者データを取得できませんでした。')}` });
+      setStatus({ tone: 'error', message: `exportに失敗しました: ${exchangeErrorMessage(error, '所有者データを取得できませんでした。')}` });
     } finally {
       setIsWorking(false);
     }
@@ -96,7 +104,7 @@ export const ObservationExchangePanel: React.FC<{ currentUser: ObserverUser }> =
           : 'import dry-runは受理できませんでした。Firestoreには書き込んでいません。',
       });
     } catch (error) {
-      setStatus({ tone: 'error', message: `import dry-runに失敗しました: ${errorMessage(error, '現在の所有者データを取得できませんでした。')}` });
+      setStatus({ tone: 'error', message: `import dry-runに失敗しました: ${exchangeErrorMessage(error, '現在の所有者データを取得できませんでした。')}` });
     } finally {
       setIsWorking(false);
     }
