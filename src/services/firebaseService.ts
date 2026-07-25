@@ -44,7 +44,11 @@ import {
   emptyNormalizedObservationCache,
   mergeNormalizedObservationCache,
 } from '../domain/normalizedObservationCache';
-import { selectRemoteResult } from '../domain/remoteReadPolicy';
+import {
+  isRemoteDataIntegrityError,
+  selectRemoteResult,
+  withRemoteDataIntegrity,
+} from '../domain/remoteReadPolicy';
 import {
   membershipProjectionQueryPlan,
   observationSetFeedQueryPlan,
@@ -121,40 +125,46 @@ function membershipToFirestore(membership: ObservationSetMembership): Record<str
 }
 
 function observationFromFirestore(id: string, data: DocumentData): Observation {
-  assertFirestoreDocumentIdentity(data, id, 'Observation');
-  const observation: Observation = {
-    ...(data as Omit<Observation, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>),
-    id,
-    createdAt: isoTimestamp(data.createdAt, 'Observation.createdAt')!,
-    updatedAt: isoTimestamp(data.updatedAt, 'Observation.updatedAt')!,
-    deletedAt: isoTimestamp(data.deletedAt, 'Observation.deletedAt', true),
-  };
-  assertObservation(observation);
-  return observation;
+  return withRemoteDataIntegrity('Observation', id, () => {
+    assertFirestoreDocumentIdentity(data, id, 'Observation');
+    const observation: Observation = {
+      ...(data as Omit<Observation, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>),
+      id,
+      createdAt: isoTimestamp(data.createdAt, 'Observation.createdAt')!,
+      updatedAt: isoTimestamp(data.updatedAt, 'Observation.updatedAt')!,
+      deletedAt: isoTimestamp(data.deletedAt, 'Observation.deletedAt', true),
+    };
+    assertObservation(observation);
+    return observation;
+  });
 }
 
 function observationSetFromFirestore(id: string, data: DocumentData): ObservationSet {
-  assertFirestoreDocumentIdentity(data, id, 'ObservationSet');
-  const observationSet: ObservationSet = {
-    ...(data as Omit<ObservationSet, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>),
-    id,
-    createdAt: isoTimestamp(data.createdAt, 'ObservationSet.createdAt')!,
-    updatedAt: isoTimestamp(data.updatedAt, 'ObservationSet.updatedAt')!,
-    deletedAt: isoTimestamp(data.deletedAt, 'ObservationSet.deletedAt', true),
-  };
-  assertObservationSet(observationSet);
-  return observationSet;
+  return withRemoteDataIntegrity('ObservationSet', id, () => {
+    assertFirestoreDocumentIdentity(data, id, 'ObservationSet');
+    const observationSet: ObservationSet = {
+      ...(data as Omit<ObservationSet, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>),
+      id,
+      createdAt: isoTimestamp(data.createdAt, 'ObservationSet.createdAt')!,
+      updatedAt: isoTimestamp(data.updatedAt, 'ObservationSet.updatedAt')!,
+      deletedAt: isoTimestamp(data.deletedAt, 'ObservationSet.deletedAt', true),
+    };
+    assertObservationSet(observationSet);
+    return observationSet;
+  });
 }
 
 function membershipFromFirestore(id: string, data: DocumentData): ObservationSetMembership {
-  assertFirestoreDocumentIdentity(data, id, 'ObservationSetMembership');
-  const membership: ObservationSetMembership = {
-    ...(data as Omit<ObservationSetMembership, 'id' | 'createdAt'>),
-    id,
-    createdAt: isoTimestamp(data.createdAt, 'ObservationSetMembership.createdAt')!,
-  };
-  assertMembership(membership);
-  return membership;
+  return withRemoteDataIntegrity('ObservationSetMembership', id, () => {
+    assertFirestoreDocumentIdentity(data, id, 'ObservationSetMembership');
+    const membership: ObservationSetMembership = {
+      ...(data as Omit<ObservationSetMembership, 'id' | 'createdAt'>),
+      id,
+      createdAt: isoTimestamp(data.createdAt, 'ObservationSetMembership.createdAt')!,
+    };
+    assertMembership(membership);
+    return membership;
+  });
 }
 
 function toFirestoreQueryConstraints(plan: FirestoreQueryPlan): QueryConstraint[] {
@@ -248,6 +258,7 @@ async function fetchMembershipsForSets(observationSets: ObservationSet[]): Promi
       ));
       memberships.push(...snapshot.docs.map((snapshotDoc) => membershipFromFirestore(snapshotDoc.id, snapshotDoc.data())));
     } catch (error) {
+      if (isRemoteDataIntegrityError(error)) throw error;
       // A set may be visible while an individual observation remains private.
       // Membership IDs are readable with the set; inaccessible observations are
       // excluded below when their own document read is denied.
@@ -264,6 +275,7 @@ async function fetchReadableObservations(memberships: ObservationSetMembership[]
       const snapshot = await getDoc(doc(db, FIRESTORE_COLLECTIONS.observations, id));
       return snapshot.exists() ? observationFromFirestore(snapshot.id, snapshot.data()) : null;
     } catch (error) {
+      if (isRemoteDataIntegrityError(error)) throw error;
       // Independent ACL means a readable set does not make its observations readable.
       console.warn(`Observation ${id} is not available in this view:`, error);
       return null;
@@ -283,7 +295,9 @@ async function fetchFirestoreViews(filterMode: ObservationSetFeedMode, currentUs
   const observationSets = setSnapshot.docs.map((snapshotDoc) => observationSetFromFirestore(snapshotDoc.id, snapshotDoc.data()));
   const memberships = await fetchMembershipsForSets(observationSets);
   const observations = await fetchReadableObservations(memberships);
-  return buildObservationSetViews({ observationSets, observations, memberships });
+  return withRemoteDataIntegrity('ObservationSetView', filterMode, () => (
+    buildObservationSetViews({ observationSets, observations, memberships })
+  ));
 }
 
 /**
@@ -350,6 +364,7 @@ export async function fetchObservations(
     });
     saveLocalCache(cache);
   } catch (error) {
+    if (isRemoteDataIntegrityError(error)) throw error;
     console.warn('Firestore query error, using v2 local cache:', error);
   }
   return selectRemoteResult(
@@ -384,6 +399,7 @@ export async function fetchOwnedActiveObservations(ownerUid: string): Promise<Ob
     cache = mergeNormalizedObservationCache(cache, { observations: remoteObservations });
     saveLocalCache(cache);
   } catch (error) {
+    if (isRemoteDataIntegrityError(error)) throw error;
     console.warn('Owner Observation picker query failed, using v2 local cache:', error);
   }
 
