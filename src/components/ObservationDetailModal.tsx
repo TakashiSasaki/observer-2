@@ -315,9 +315,17 @@ export const ObservationDetailModal: React.FC<ObservationDetailModalProps> = ({
                     </div>
                   )}
                   {attachmentCandidatesError && (
-                    <p className="rounded border border-rose-200 bg-rose-50 p-2 text-[11px] text-rose-700">
-                      {attachmentCandidatesError}
-                    </p>
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-rose-200 bg-rose-50 p-2 text-[11px] text-rose-700">
+                      <p>{attachmentCandidatesError}</p>
+                      <button
+                        type="button"
+                        onClick={() => void onLoadAttachmentCandidates()}
+                        disabled={isAttachmentCandidatesLoading || membershipActionId !== null}
+                        className="inline-flex shrink-0 items-center rounded border border-rose-300 bg-white px-2 py-1 font-bold text-rose-700 transition hover:bg-rose-100 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        再試行
+                      </button>
+                    </div>
                   )}
                   {!isAttachmentCandidatesLoading && !attachmentCandidatesError && eligibleAttachmentCandidates.length === 0 && (
                     <p className="rounded border border-blue-100 bg-white p-2 text-[11px] text-slate-600">
