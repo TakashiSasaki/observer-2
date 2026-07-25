@@ -44,6 +44,7 @@ import {
   emptyNormalizedObservationCache,
   mergeNormalizedObservationCache,
 } from '../domain/normalizedObservationCache';
+import { selectRemoteResult } from '../domain/remoteReadPolicy';
 import {
   membershipProjectionQueryPlan,
   observationSetFeedQueryPlan,
@@ -338,21 +339,23 @@ export async function fetchObservations(
   currentUserUid?: string,
   currentUserEmail?: string,
 ): Promise<ObservationSetView[]> {
+  let remoteViews: ObservationSetView[] | undefined;
   try {
     const views = await fetchFirestoreViews(filterMode, currentUserUid, currentUserEmail);
-    if (views.length > 0) {
-      const cache = mergeNormalizedObservationCache(getLocalCache(), {
-        observationSets: views,
-        observations: views.flatMap((view) => view.observations),
-        memberships: views.flatMap((view) => view.memberships),
-      });
-      saveLocalCache(cache);
-      return views;
-    }
+    remoteViews = views;
+    const cache = mergeNormalizedObservationCache(getLocalCache(), {
+      observationSets: views,
+      observations: views.flatMap((view) => view.observations),
+      memberships: views.flatMap((view) => view.memberships),
+    });
+    saveLocalCache(cache);
   } catch (error) {
     console.warn('Firestore query error, using v2 local cache:', error);
   }
-  return filterLocalViews(cacheViews(getLocalCache()), filterMode, currentUserUid, currentUserEmail);
+  return selectRemoteResult(
+    remoteViews,
+    () => filterLocalViews(cacheViews(getLocalCache()), filterMode, currentUserUid, currentUserEmail),
+  );
 }
 
 /**
@@ -369,21 +372,23 @@ export async function fetchOwnedActiveObservations(ownerUid: string): Promise<Ob
   if (!plan) return [];
 
   let cache = getLocalCache();
+  let remoteObservations: Observation[] | undefined;
   try {
     const snapshot = await getDocs(query(
       collection(db, plan.collection),
       ...toFirestoreQueryConstraints(plan),
     ));
-    const observations = snapshot.docs.map((snapshotDoc) => (
+    remoteObservations = snapshot.docs.map((snapshotDoc) => (
       observationFromFirestore(snapshotDoc.id, snapshotDoc.data())
     ));
-    cache = mergeNormalizedObservationCache(cache, { observations });
+    cache = mergeNormalizedObservationCache(cache, { observations: remoteObservations });
     saveLocalCache(cache);
   } catch (error) {
     console.warn('Owner Observation picker query failed, using v2 local cache:', error);
   }
 
-  return Object.values(cache.observations)
+  const observations = selectRemoteResult(remoteObservations, () => Object.values(cache.observations));
+  return observations
     .filter((observation) => observation.uid === ownerUid && observation.deletedAt === null)
     .sort((left, right) => (
       right.createdAt.localeCompare(left.createdAt)

@@ -39,6 +39,7 @@ function observationDocument(
   uid: string,
   visibility: 'public' | 'authenticated' | 'shared' | 'private' = 'private',
   allowedEmails: string[] = [],
+  overrides: Record<string, unknown> = {},
 ): Record<string, unknown> {
   return {
     id,
@@ -59,6 +60,7 @@ function observationDocument(
     createdAt: CREATED_AT,
     updatedAt: CREATED_AT,
     deletedAt: null,
+    ...overrides,
   };
 }
 
@@ -67,11 +69,13 @@ function observationSetDocument(
   uid: string,
   visibility: 'public' | 'authenticated' | 'shared' | 'private' = 'private',
   allowedEmails: string[] = [],
+  overrides: Record<string, unknown> = {},
 ): Record<string, unknown> {
   return {
     ...observationDocument(id, uid, visibility, allowedEmails),
     title: 'Test observation set',
     tags: [],
+    ...overrides,
   };
 }
 
@@ -135,6 +139,31 @@ test('only the authenticated owner can create a canonical Observation document',
   await assertFails(ownerDb.doc(`observations/${ids.observationC}`).set(
     { ...observationDocument(ids.observationC, OWNER_UID), parentSetId: ids.observationSetA },
   ));
+});
+
+test('canonical entity rules reject invalid locations and non-monotonic timestamps', async () => {
+  const ownerDb = authenticatedFirestore(OWNER_UID);
+
+  await assertFails(ownerDb.doc(`observations/${ids.observationA}`).set(
+    observationDocument(ids.observationA, OWNER_UID, 'private', [], {
+      location: { latitude: 91, longitude: 0 },
+    }),
+  ));
+  await assertFails(ownerDb.doc(`observations/${ids.observationB}`).set(
+    observationDocument(ids.observationB, OWNER_UID, 'private', [], {
+      updatedAt: new Date('2026-07-24T23:59:59.000Z'),
+    }),
+  ));
+  await assertFails(ownerDb.doc(`observationSets/${ids.observationSetA}`).set(
+    observationSetDocument(ids.observationSetA, OWNER_UID, 'private', [], {
+      location: { latitude: 0, longitude: 181 },
+    }),
+  ));
+
+  await seed(['observations', ids.observationC], observationDocument(ids.observationC, OWNER_UID));
+  await assertFails(ownerDb.doc(`observations/${ids.observationC}`).update({
+    updatedAt: new Date('2026-07-24T23:59:59.000Z'),
+  }));
 });
 
 test('a Membership write requires active endpoints owned by its authenticated writer', async () => {
