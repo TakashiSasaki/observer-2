@@ -41,6 +41,7 @@ import {
   isRecoverableRemoteReadError,
   isRemoteReadError,
   RemoteDataIntegrityError,
+  RemoteReadLimitError,
   RemoteReadError,
   selectRemoteResult,
   withRemoteDataIntegrity,
@@ -88,6 +89,14 @@ test('remote read failures are classified and only transient transport failures 
   assert.equal(classifyRemoteReadError(unavailable), unavailable);
 });
 
+test('a bounded remote-read limit is distinct from a recoverable transport failure', () => {
+  const error = new RemoteReadLimitError('observations', 1000);
+  assert.equal(error.name, 'RemoteReadLimitError');
+  assert.equal(error.collection, 'observations');
+  assert.equal(error.maximumResults, 1000);
+  assert.equal(isRecoverableRemoteReadError(error), false);
+});
+
 test('normalized cache freshness is bound to the producing principal and a finite age', () => {
   const now = 10_000;
   const metadata = createNormalizedCacheSnapshotMetadata({
@@ -117,6 +126,16 @@ test('normalized cache freshness is bound to the producing principal and a finit
   assert.equal(bounded.complete, false);
   assert.equal(isFreshNormalizedCacheSnapshot(bounded, 'owner-a', 'mine-feed', now), true);
   assert.equal(isFreshCompleteNormalizedCacheSnapshot(bounded, 'owner-a', 'mine-feed', 50, now), false);
+
+  const exhausted = createNormalizedCacheSnapshotMetadata({
+    principalUid: 'owner-a',
+    scope: 'mine-feed',
+    storedAt: now - 1_000,
+    resultLimit: 50,
+    resultCount: 50,
+    complete: true,
+  });
+  assert.equal(isFreshCompleteNormalizedCacheSnapshot(exhausted, 'owner-a', 'mine-feed', 50, now), true);
 });
 
 test('the in-memory acceptance harness passes M01 through M03 without persistence', () => {

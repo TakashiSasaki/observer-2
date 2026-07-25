@@ -18,7 +18,10 @@ import {
   dryRunOwnedObservationInterchangeImport,
   exportOwnedObservationInterchangeBundle,
 } from '../services/firebaseService';
-import { isRemoteDataIntegrityError } from '../domain/remoteReadPolicy';
+import {
+  isRemoteDataIntegrityError,
+  isRemoteReadLimitError,
+} from '../domain/remoteReadPolicy';
 import { CURRENT_SCHEMA_VERSION, type ObserverUser } from '../types';
 
 type Status = { tone: 'success' | 'error'; message: string } | null;
@@ -34,6 +37,9 @@ function formatBytes(bytes: number): string {
 function exchangeErrorMessage(error: unknown, fallback: string): string {
   if (isRemoteDataIntegrityError(error)) {
     return 'Firestoreのv2データ契約に違反する記録を検出しました。古いcacheをexchangeの結果として使っていません。';
+  }
+  if (isRemoteReadLimitError(error)) {
+    return `所有者データが上限${error.maximumResults}件を超えています。不完全なbundleはexport／比較せず、上限内のデータに分けてください。`;
   }
   return errorMessage(error, fallback);
 }

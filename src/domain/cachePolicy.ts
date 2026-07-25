@@ -33,7 +33,7 @@ export function isFreshNormalizedCacheSnapshot(
   if (typeof candidate.resultLimit !== 'number' || !Number.isSafeInteger(candidate.resultLimit) || candidate.resultLimit <= 0) return false;
   if (typeof candidate.resultCount !== 'number' || !Number.isSafeInteger(candidate.resultCount) || candidate.resultCount < 0) return false;
   if (candidate.resultCount > candidate.resultLimit) return false;
-  if (typeof candidate.complete !== 'boolean' || candidate.complete !== (candidate.resultCount < candidate.resultLimit)) return false;
+  if (typeof candidate.complete !== 'boolean') return false;
   if (!Number.isFinite(maxAgeMs) || maxAgeMs < 0) return false;
   const age = now - candidate.storedAt;
   return age >= 0 && age <= maxAgeMs;
@@ -60,6 +60,7 @@ export function createNormalizedCacheSnapshotMetadata(input: {
   resultLimit: number;
   resultCount: number;
   storedAt?: number;
+  complete?: boolean;
 }): NormalizedCacheSnapshotMetadata {
   const storedAt = input.storedAt ?? Date.now();
   return {
@@ -68,6 +69,6 @@ export function createNormalizedCacheSnapshotMetadata(input: {
     storedAt,
     resultLimit: input.resultLimit,
     resultCount: input.resultCount,
-    complete: input.resultCount < input.resultLimit,
+    complete: input.complete ?? input.resultCount < input.resultLimit,
   };
 }

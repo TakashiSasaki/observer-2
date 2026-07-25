@@ -7,8 +7,10 @@ import {
   orderBy,
   query,
   runTransaction,
+  startAfter,
   Timestamp,
   type DocumentData,
+  type QueryDocumentSnapshot,
   type QueryConstraint,
   where,
   writeBatch,
@@ -52,7 +54,9 @@ import {
 import {
   classifyRemoteReadError,
   isRemoteDataIntegrityError,
+  isRemoteReadLimitError,
   isRecoverableRemoteReadError,
+  RemoteReadLimitError,
   selectRemoteResult,
   withRemoteDataIntegrity,
 } from '../domain/remoteReadPolicy';
@@ -81,6 +85,7 @@ const LOCAL_STORAGE_KEY_PREFIX = 'observer-2.normalized-cache.v2.';
 const LOCAL_STORAGE_SNAPSHOT_KEY_PREFIX = 'observer-2.normalized-snapshot.v2.';
 const LOCAL_STORAGE_SNAPSHOT_METADATA_KEY_PREFIX = 'observer-2.normalized-snapshot-meta.v2.';
 const MAX_NEW_MEMBERSHIPS_PER_CLIENT_BATCH = 9;
+const REMOTE_QUERY_PAGE_SIZE = 100;
 type RemoteReadMode = 'cache-fallback' | 'remote-required';
 
 // User Auth Helpers
@@ -188,13 +193,73 @@ function membershipFromFirestore(id: string, data: DocumentData): ObservationSet
   });
 }
 
-function toFirestoreQueryConstraints(plan: FirestoreQueryPlan): QueryConstraint[] {
+function toFirestoreQueryConstraints(
+  plan: FirestoreQueryPlan,
+  pageLimit = plan.limit,
+  cursor?: QueryDocumentSnapshot,
+): QueryConstraint[] {
   const constraints: QueryConstraint[] = [
     ...plan.filters.map((filter) => where(filter.fieldPath, filter.op, filter.value)),
     ...plan.orderBy.map((ordering) => orderBy(ordering.fieldPath, ordering.direction)),
   ];
-  if (plan.limit !== undefined) constraints.push(limit(plan.limit));
+  if (cursor) constraints.push(startAfter(cursor));
+  if (pageLimit !== undefined) constraints.push(limit(pageLimit));
   return constraints;
+}
+
+type BoundedQueryDocuments = {
+  documents: QueryDocumentSnapshot[];
+  complete: boolean;
+};
+
+/**
+ * Reads a bounded query in cursor pages and probes the next page when the
+ * maximum is reached. Regular feeds may display the bounded prefix, but a
+ * remote-required exchange operation rejects a non-empty next page instead
+ * of exporting an incomplete snapshot.
+ */
+async function fetchBoundedQueryDocuments(
+  plan: FirestoreQueryPlan,
+  maximumResults: number,
+  rejectIncomplete: boolean,
+): Promise<BoundedQueryDocuments> {
+  if (!Number.isSafeInteger(maximumResults) || maximumResults <= 0) {
+    throw new Error(`The remote query maximum must be a positive safe integer: ${maximumResults}`);
+  }
+
+  const pageSize = Math.min(REMOTE_QUERY_PAGE_SIZE, maximumResults);
+  const documents: QueryDocumentSnapshot[] = [];
+  let cursor: QueryDocumentSnapshot | undefined;
+
+  while (documents.length < maximumResults) {
+    const pageLimit = Math.min(pageSize, maximumResults - documents.length);
+    const snapshot = await getDocs(query(
+      collection(db, plan.collection),
+      ...toFirestoreQueryConstraints(plan, pageLimit, cursor),
+    ));
+    documents.push(...snapshot.docs);
+
+    if (snapshot.docs.length < pageLimit) {
+      return { documents, complete: true };
+    }
+
+    const lastDocument = snapshot.docs[snapshot.docs.length - 1];
+    if (documents.length >= maximumResults) {
+      const nextPage = await getDocs(query(
+        collection(db, plan.collection),
+        ...toFirestoreQueryConstraints(plan, 1, lastDocument),
+      ));
+      const complete = nextPage.empty;
+      if (!complete && rejectIncomplete) {
+        throw new RemoteReadLimitError(plan.collection, maximumResults);
+      }
+      return { documents, complete };
+    }
+
+    cursor = lastDocument;
+  }
+
+  return { documents, complete: true };
 }
 
 function cachePrincipalUid(principalUid?: string): string {
@@ -218,6 +283,7 @@ function saveLocalCacheSnapshot(
   principalUid: string,
   resultLimit: number,
   resultCount: number,
+  complete: boolean,
 ): void {
   try {
     assertNormalizedObservationCache(cache);
@@ -226,6 +292,7 @@ function saveLocalCacheSnapshot(
       scope,
       resultLimit,
       resultCount,
+      complete,
     });
     localStorage.setItem(
       cacheSnapshotStorageKey(LOCAL_STORAGE_SNAPSHOT_KEY_PREFIX, principalUid, scope),
@@ -367,13 +434,10 @@ async function fetchMembershipsForSets(observationSets: ObservationSet[]): Promi
   for (const observationSet of observationSets) {
     try {
       const plan = membershipProjectionQueryPlan(observationSet.id, observationSet.uid);
-      const snapshot = await getDocs(query(
-        collection(db, plan.collection),
-        ...toFirestoreQueryConstraints(plan),
-      ));
-      memberships.push(...snapshot.docs.map((snapshotDoc) => membershipFromFirestore(snapshotDoc.id, snapshotDoc.data())));
+      const result = await fetchBoundedQueryDocuments(plan, MAX_INTERCHANGE_RECORDS, true);
+      memberships.push(...result.documents.map((snapshotDoc) => membershipFromFirestore(snapshotDoc.id, snapshotDoc.data())));
     } catch (error) {
-      if (isRemoteDataIntegrityError(error)) throw error;
+      if (isRemoteDataIntegrityError(error) || isRemoteReadLimitError(error)) throw error;
       // A set that was successfully read should also permit its membership
       // query. Do not silently turn a failed relation read into a partial view;
       // the caller may still choose a bounded cache fallback for a recoverable
@@ -411,20 +475,20 @@ async function fetchFirestoreViews(
   currentUserUid?: string,
   currentUserEmail?: string,
   resultLimit?: number,
-): Promise<ObservationSetView[]> {
-  const plan = observationSetFeedQueryPlan(filterMode, currentUserUid, currentUserEmail, resultLimit);
-  if (!plan) return [];
+  rejectIncomplete = false,
+): Promise<{ views: ObservationSetView[]; complete: boolean }> {
+  const effectiveResultLimit = resultLimit ?? DEFAULT_OBSERVATION_SET_FEED_LIMIT;
+  const plan = observationSetFeedQueryPlan(filterMode, currentUserUid, currentUserEmail, effectiveResultLimit);
+  if (!plan) return { views: [], complete: true };
 
-  const setSnapshot = await getDocs(query(
-    collection(db, plan.collection),
-    ...toFirestoreQueryConstraints(plan),
-  ));
-  const observationSets = setSnapshot.docs.map((snapshotDoc) => observationSetFromFirestore(snapshotDoc.id, snapshotDoc.data()));
+  const setQuery = await fetchBoundedQueryDocuments(plan, effectiveResultLimit, rejectIncomplete);
+  const observationSets = setQuery.documents.map((snapshotDoc) => observationSetFromFirestore(snapshotDoc.id, snapshotDoc.data()));
   const memberships = await fetchMembershipsForSets(observationSets);
   const observations = await fetchReadableObservations(memberships);
-  return withRemoteDataIntegrity('ObservationSetView', filterMode, () => (
+  const views = withRemoteDataIntegrity('ObservationSetView', filterMode, () => (
     buildObservationSetViews({ observationSets, observations, memberships })
   ));
+  return { views, complete: setQuery.complete };
 }
 
 /**
@@ -487,25 +551,32 @@ export async function fetchObservations(
   const effectiveResultLimit = resultLimit ?? DEFAULT_OBSERVATION_SET_FEED_LIMIT;
   let remoteViews: ObservationSetView[] | undefined;
   try {
-    const views = await fetchFirestoreViews(filterMode, currentUserUid, currentUserEmail, effectiveResultLimit);
-    remoteViews = views;
+    const result = await fetchFirestoreViews(
+      filterMode,
+      currentUserUid,
+      currentUserEmail,
+      effectiveResultLimit,
+      readMode === 'remote-required',
+    );
+    remoteViews = result.views;
     const cache = mergeNormalizedObservationCache(getLocalCache(principalUid), {
-      observationSets: views,
-      observations: uniqueRecords(views.flatMap((view) => view.observations)),
-      memberships: uniqueRecords(views.flatMap((view) => view.memberships)),
+      observationSets: result.views,
+      observations: uniqueRecords(result.views.flatMap((view) => view.observations)),
+      memberships: uniqueRecords(result.views.flatMap((view) => view.memberships)),
     });
     saveLocalCache(cache, principalUid);
     if (filterMode === 'mine' && principalUid) {
       saveLocalCacheSnapshot(
         'mine-feed',
-        cacheFromViews(views),
+        cacheFromViews(result.views),
         principalUid,
         effectiveResultLimit,
-        views.length,
+        result.views.length,
+        result.complete,
       );
     }
   } catch (error) {
-    if (isRemoteDataIntegrityError(error)) throw error;
+    if (isRemoteDataIntegrityError(error) || isRemoteReadLimitError(error)) throw error;
     const classified = classifyRemoteReadError(error);
     if (readMode === 'remote-required' || !isRecoverableRemoteReadError(classified)) {
       throw classified;
@@ -531,7 +602,7 @@ export async function fetchObservations(
  */
 export async function fetchOwnedActiveObservations(
   ownerUid: string,
-  resultLimit = 100,
+  resultLimit = DEFAULT_OWNED_OBSERVATION_PICKER_LIMIT,
   readMode: RemoteReadMode = 'cache-fallback',
 ): Promise<Observation[]> {
   if (!auth.currentUser || auth.currentUser.uid !== ownerUid) {
@@ -545,11 +616,8 @@ export async function fetchOwnedActiveObservations(
   let cache = getLocalCache(ownerUid);
   let remoteObservations: Observation[] | undefined;
   try {
-    const snapshot = await getDocs(query(
-      collection(db, plan.collection),
-      ...toFirestoreQueryConstraints(plan),
-    ));
-    remoteObservations = snapshot.docs.map((snapshotDoc) => (
+    const result = await fetchBoundedQueryDocuments(plan, effectiveResultLimit, readMode === 'remote-required');
+    remoteObservations = result.documents.map((snapshotDoc) => (
       observationFromFirestore(snapshotDoc.id, snapshotDoc.data())
     ));
     cache = mergeNormalizedObservationCache(cache, { observations: remoteObservations });
@@ -560,9 +628,10 @@ export async function fetchOwnedActiveObservations(
       ownerUid,
       effectiveResultLimit,
       remoteObservations.length,
+      result.complete,
     );
   } catch (error) {
-    if (isRemoteDataIntegrityError(error)) throw error;
+    if (isRemoteDataIntegrityError(error) || isRemoteReadLimitError(error)) throw error;
     const classified = classifyRemoteReadError(error);
     if (readMode === 'remote-required' || !isRecoverableRemoteReadError(classified)) {
       throw classified;

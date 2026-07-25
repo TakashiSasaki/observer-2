@@ -259,15 +259,18 @@ metadata.
   read so stale ACLs cannot expose revoked records.
 - Exchange export and import dry-run require remote reads; an incomplete cache
   cannot be exported or used as the comparison baseline.
-- A bounded query is complete only when its result count is below its limit. An
-  exact-limit result is marked incomplete and is not used as a fallback because
-  pagination is not implemented yet.
+- Bounded reads use cursor pages of at most 100 documents and probe the next
+  page when the configured maximum is reached. A snapshot is complete only
+  when that probe finds no additional matching document. Regular feeds and the
+  attachment picker display their bounded prefix; remote-required exchange
+  reads reject an additional page instead of exporting an incomplete result.
 - Successful entity mutations invalidate both owner snapshot scopes.
 
 Current limitations:
 
-- pagination beyond the bounded query limit is not implemented; an exact-limit
-  snapshot therefore cannot be used during a transient remote failure;
+- regular feeds and the attachment picker remain intentionally bounded; when a
+  next page exists, the prefix is displayed but its snapshot is not eligible
+  for transient-failure fallback;
 - attachment-picker failures are classified into integrity, authorization,
   authentication, query, quota, and transient-read messages and expose retry;
 - permission-denied or not-found observation endpoints are redacted as an
