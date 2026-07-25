@@ -9,10 +9,18 @@ import {
   membershipDocumentId,
 } from '../../src/domain/observationDomain.ts';
 import {
+  assertNormalizedObservationCache,
+  buildObservationSetViewsFromNormalizedObservationCache,
+  detachMembershipFromNormalizedObservationCache,
+  emptyNormalizedObservationCache,
+  mergeNormalizedObservationCache,
+} from '../../src/domain/normalizedObservationCache.ts';
+import {
   CURRENT_SCHEMA_VERSION,
   type Observation,
   type ObservationSet,
   type ObservationSetMembership,
+  type ObservationSetView,
 } from '../../src/types.ts';
 
 const createdAt = '2026-07-24T12:00:00.000Z';
@@ -239,6 +247,137 @@ test('membership references must use UUIDv7 endpoints even when validated indepe
   assert.throws(
     () => membershipDocumentId('not-a-uuidv7', observation().id),
     /observationSetId must be a lowercase UUIDv7/,
+  );
+});
+
+test('membership validators reject unsupported fields as well as invalid endpoint IDs', () => {
+  const item = observation();
+  const set = observationSet('018fd116-8cf0-7def-8abc-1234567890ac');
+  const membership = createMembership({ observationSet: set, observation: item, position: 0, createdAt });
+
+  assert.throws(
+    () => assertMembership({ ...membership, parentSetId: set.id } as unknown as ObservationSetMembership),
+    /Membership has unsupported field parentSetId/,
+  );
+});
+
+test('normalized cache persists canonical records and strips read-time projection arrays', () => {
+  const item = observation();
+  const set = observationSet('018fd116-8cf0-7def-8abc-1234567890ac');
+  const membership = createMembership({ observationSet: set, observation: item, position: 0, createdAt });
+  const view = { ...set, observations: [item], memberships: [membership] };
+
+  const cache = mergeNormalizedObservationCache(emptyNormalizedObservationCache(), {
+    observations: [item],
+    observationSets: [view],
+    memberships: [membership],
+  });
+
+  assert.equal('observations' in cache.observationSets[set.id], false);
+  assert.equal('memberships' in cache.observationSets[set.id], false);
+  assert.deepEqual(view.observations, [item]);
+  assert.deepEqual(view.memberships, [membership]);
+  assert.deepEqual(
+    buildObservationSetViewsFromNormalizedObservationCache(cache)[0].observations.map((entry) => entry.id),
+    [item.id],
+  );
+});
+
+test('detaching from normalized cache removes one relation but preserves the other set and Observation', () => {
+  const item = observation();
+  const setA = observationSet('018fd116-8cf0-7def-8abc-1234567890ac');
+  const setB = observationSet('018fd116-8cf0-7def-8abc-1234567890ad');
+  const membershipA = createMembership({ observationSet: setA, observation: item, position: 0, createdAt });
+  const membershipB = createMembership({ observationSet: setB, observation: item, position: 0, createdAt });
+  const cache = mergeNormalizedObservationCache(emptyNormalizedObservationCache(), {
+    observations: [item],
+    observationSets: [setA, setB],
+    memberships: [membershipA, membershipB],
+  });
+
+  const detached = detachMembershipFromNormalizedObservationCache(cache, setA.id, item.id);
+  const viewsById = new Map(
+    buildObservationSetViewsFromNormalizedObservationCache(detached).map((view) => [view.id, view]),
+  );
+
+  assert.equal(detached.observations[item.id].id, item.id);
+  assert.equal(detached.memberships[membershipA.id], undefined);
+  assert.equal(detached.memberships[membershipB.id].id, membershipB.id);
+  assert.equal(viewsById.get(setA.id)?.observations.length, 0);
+  assert.deepEqual(viewsById.get(setB.id)?.observations.map((entry) => entry.id), [item.id]);
+});
+
+test('normalized cache retains soft-deleted canonical records while projection hides inactive endpoints', () => {
+  const activeItem = observation();
+  const set = observationSet('018fd116-8cf0-7def-8abc-1234567890ac');
+  const membership = createMembership({ observationSet: set, observation: activeItem, position: 0, createdAt });
+  const item = {
+    ...activeItem,
+    deletedAt: '2026-07-25T12:00:00.000Z',
+    updatedAt: '2026-07-25T12:00:00.000Z',
+  };
+  const cache = mergeNormalizedObservationCache(emptyNormalizedObservationCache(), {
+    observations: [item],
+    observationSets: [set],
+    memberships: [membership],
+  });
+
+  const [view] = buildObservationSetViewsFromNormalizedObservationCache(cache);
+  assert.equal(cache.observations[item.id].deletedAt, item.deletedAt);
+  assert.equal(cache.memberships[membership.id].id, membership.id);
+  assert.deepEqual(view.observations, []);
+  assert.deepEqual(view.memberships, []);
+});
+
+test('normalized cache view order belongs to memberships and uses their deterministic IDs as ties', () => {
+  const first = observation({ id: '018fd116-8cf0-7def-8abc-1234567890ac', title: 'first' });
+  const second = observation({ id: '018fd116-8cf0-7def-8abc-1234567890ad', title: 'second' });
+  const third = observation({ id: '018fd116-8cf0-7def-8abc-1234567890ae', title: 'third' });
+  const set = observationSet('018fd116-8cf0-7def-8abc-1234567890af');
+  const cache = mergeNormalizedObservationCache(emptyNormalizedObservationCache(), {
+    observations: [first, second, third],
+    observationSets: [set],
+    memberships: [
+      createMembership({ observationSet: set, observation: second, position: 1, createdAt }),
+      createMembership({ observationSet: set, observation: third, position: 0, createdAt }),
+      createMembership({ observationSet: set, observation: first, position: 1, createdAt }),
+    ],
+  });
+
+  const [view] = buildObservationSetViewsFromNormalizedObservationCache(cache);
+  assert.deepEqual(view.observations.map((entry) => entry.id), [third.id, first.id, second.id]);
+});
+
+test('normalized cache rejects mismatched map keys, derived arrays, and duplicate merge input', () => {
+  const item = observation();
+  const set = observationSet('018fd116-8cf0-7def-8abc-1234567890ac');
+  const membership = createMembership({ observationSet: set, observation: item, position: 0, createdAt });
+  const validCache = mergeNormalizedObservationCache(emptyNormalizedObservationCache(), {
+    observations: [item],
+    observationSets: [set],
+    memberships: [membership],
+  });
+
+  assert.throws(
+    () => assertNormalizedObservationCache({ ...validCache, observations: { wrong: item } }),
+    /cache\.observations key wrong must match the stored entity id/,
+  );
+  assert.throws(
+    () => assertNormalizedObservationCache({
+      ...validCache,
+      observationSets: { [set.id]: { ...set, observations: [item] } },
+    }),
+    /ObservationSet has unsupported field observations/,
+  );
+  assert.throws(
+    () => mergeNormalizedObservationCache(emptyNormalizedObservationCache(), { observations: [item, item] }),
+    /duplicate Observation\.id in one cache merge/,
+  );
+  assert.throws(
+    () => mergeNormalizedObservationCache(emptyNormalizedObservationCache(), {
+      observationSets: [{ ...set, observations: 'not-an-array' } as unknown as ObservationSetView],
+    }),
+    /ObservationSetView\.observations must be an array/,
   );
 });
 

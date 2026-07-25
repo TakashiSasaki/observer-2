@@ -36,6 +36,13 @@ import {
   createMembership,
   membershipDocumentId,
 } from '../domain/observationDomain';
+import {
+  assertNormalizedObservationCache,
+  buildObservationSetViewsFromNormalizedObservationCache,
+  detachMembershipFromNormalizedObservationCache,
+  emptyNormalizedObservationCache,
+  mergeNormalizedObservationCache,
+} from '../domain/normalizedObservationCache';
 import { processImageToWebP } from '../utils/imageUtils';
 import { generateId } from '../utils/idUtils';
 
@@ -43,13 +50,6 @@ const LOCAL_STORAGE_KEY = 'observer-2.normalized-cache.v2';
 const MAX_NEW_MEMBERSHIPS_PER_CLIENT_BATCH = 9;
 
 type FilterMode = 'mine' | 'shared' | 'authenticated' | 'public';
-
-const emptyCache = (): NormalizedObservationCache => ({
-  schemaVersion: CURRENT_SCHEMA_VERSION,
-  observations: {},
-  observationSets: {},
-  memberships: {},
-});
 
 // User Auth Helpers
 export async function loginWithGoogle(): Promise<ObserverUser> {
@@ -150,49 +150,22 @@ function membershipFromFirestore(id: string, data: DocumentData): ObservationSet
 function getLocalCache(): NormalizedObservationCache {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (!raw) return emptyCache();
-    const parsed = JSON.parse(raw) as NormalizedObservationCache;
-    if (parsed.schemaVersion !== CURRENT_SCHEMA_VERSION) return emptyCache();
-    for (const observation of Object.values(parsed.observations)) assertObservation(observation);
-    for (const observationSet of Object.values(parsed.observationSets)) assertObservationSet(observationSet);
-    for (const membership of Object.values(parsed.memberships)) assertMembership(membership);
+    if (!raw) return emptyNormalizedObservationCache();
+    const parsed = JSON.parse(raw) as unknown;
+    assertNormalizedObservationCache(parsed);
     return parsed;
   } catch {
-    return emptyCache();
+    return emptyNormalizedObservationCache();
   }
 }
 
 function saveLocalCache(cache: NormalizedObservationCache): void {
   try {
+    assertNormalizedObservationCache(cache);
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cache));
   } catch (error) {
     console.warn('LocalStorage save failed:', error);
   }
-}
-
-function mergeCache(
-  current: NormalizedObservationCache,
-  input: {
-    observations?: Iterable<Observation>;
-    observationSets?: Iterable<ObservationSet>;
-    memberships?: Iterable<ObservationSetMembership>;
-  },
-): NormalizedObservationCache {
-  const next: NormalizedObservationCache = {
-    schemaVersion: CURRENT_SCHEMA_VERSION,
-    observations: { ...current.observations },
-    observationSets: { ...current.observationSets },
-    memberships: { ...current.memberships },
-  };
-  for (const observation of input.observations ?? []) next.observations[observation.id] = observation;
-  for (const observationSet of input.observationSets ?? []) {
-    // A caller may hand us a read-time ObservationSetView. Strip its derived
-    // arrays before caching so the cache remains three-entity normalized.
-    const { observations: _observations, memberships: _memberships, ...canonical } = observationSet as ObservationSet & Partial<ObservationSetView>;
-    next.observationSets[canonical.id] = canonical as ObservationSet;
-  }
-  for (const membership of input.memberships ?? []) next.memberships[membership.id] = membership;
-  return next;
 }
 
 function makeObservation(draft: ObservationDraft, fallback: Pick<ObservationSet, 'uid' | 'observerName' | 'observerPhoto' | 'visibility' | 'allowedEmails'>, now: string): Observation {
@@ -231,11 +204,7 @@ function makeObservationSet(draft: ObservationSetDraft, imageUrl: string | undef
 }
 
 function cacheViews(cache: NormalizedObservationCache): ObservationSetView[] {
-  return buildObservationSetViews({
-    observations: Object.values(cache.observations),
-    observationSets: Object.values(cache.observationSets),
-    memberships: Object.values(cache.memberships),
-  });
+  return buildObservationSetViewsFromNormalizedObservationCache(cache);
 }
 
 function filterLocalViews(views: ObservationSetView[], filterMode: FilterMode, currentUserUid?: string, currentUserEmail?: string): ObservationSetView[] {
@@ -350,7 +319,7 @@ export async function createObservation(draft: ObservationSetDraft): Promise<Obs
     await batch.commit();
   }
 
-  const updatedCache = mergeCache(getLocalCache(), { observationSets: [observationSet], observations, memberships });
+  const updatedCache = mergeNormalizedObservationCache(getLocalCache(), { observationSets: [observationSet], observations, memberships });
   saveLocalCache(updatedCache);
   return buildObservationSetViews({ observationSets: [observationSet], observations, memberships })[0];
 }
@@ -364,7 +333,7 @@ export async function fetchObservations(
   try {
     const views = await fetchFirestoreViews(filterMode, currentUserUid, currentUserEmail);
     if (views.length > 0) {
-      const cache = mergeCache(getLocalCache(), {
+      const cache = mergeNormalizedObservationCache(getLocalCache(), {
         observationSets: views,
         observations: views.flatMap((view) => view.observations),
         memberships: views.flatMap((view) => view.memberships),
@@ -407,7 +376,7 @@ export async function attachObservationToSet(observationSetId: string, observati
     transaction.set(membershipRef, membershipToFirestore(membership));
   });
 
-  const cache = mergeCache(getLocalCache(), { observationSets: [observationSet], observations: [observation], memberships: [membership] });
+  const cache = mergeNormalizedObservationCache(getLocalCache(), { observationSets: [observationSet], observations: [observation], memberships: [membership] });
   saveLocalCache(cache);
   return membership;
 }
@@ -420,8 +389,7 @@ export async function detachObservationFromSet(observationSetId: string, observa
   batch.delete(doc(db, FIRESTORE_COLLECTIONS.memberships, id));
   await batch.commit();
 
-  const cache = getLocalCache();
-  delete cache.memberships[id];
+  const cache = detachMembershipFromNormalizedObservationCache(getLocalCache(), observationSetId, observationId);
   saveLocalCache(cache);
 }
 
