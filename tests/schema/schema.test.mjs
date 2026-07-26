@@ -45,6 +45,32 @@ test('v2 interchange schema uses only normalized top-level entity arrays', () =>
   assert.match(interchange, /serializeObservationInterchangeBundle/);
 });
 
+test('C02 contract package owns validation, diagnostics, types, and conformance vectors', () => {
+  const packageJson = readJson('package.json');
+  const validator = fs.readFileSync(path.join(root, 'src/contracts/validator.ts'), 'utf8');
+  const semanticValidation = fs.readFileSync(path.join(root, 'src/contracts/semanticValidation.ts'), 'utf8');
+  const diagnostics = fs.readFileSync(path.join(root, 'src/contracts/diagnostics.ts'), 'utf8');
+  const canonicalize = fs.readFileSync(path.join(root, 'src/contracts/canonicalize.ts'), 'utf8');
+  const applicationTypes = fs.readFileSync(path.join(root, 'src/types.ts'), 'utf8');
+  const vectorsPath = path.join(root, 'contracts/observer-observation-interchange/releases/2.0.0/test-vectors/validation.json');
+  const examplePath = path.join(root, 'contracts/observer-observation-interchange/releases/2.0.0/examples/minimal.json');
+
+  assert.match(packageJson.dependencies.ajv, /^\^8\./);
+  assert.match(packageJson.dependencies['ajv-formats'], /^\^3\./);
+  assert.match(packageJson.scripts['test:contracts'], /tests\/contracts\/contractValidation\.test\.ts/);
+  assert.match(validator, /Ajv2020/);
+  assert.match(validator, /ajv-formats/);
+  assert.match(validator, /SCHEMA_URI/);
+  assert.match(semanticValidation, /MEMBERSHIP_ID_MISMATCH/);
+  assert.match(semanticValidation, /DANGLING_REFERENCE/);
+  assert.match(semanticValidation, /OWNER_MISMATCH/);
+  assert.match(diagnostics, /instancePath/);
+  assert.match(canonicalize, /stableJsonValue/);
+  assert.match(applicationTypes, /contracts\/types\.ts/);
+  assert.equal(fs.existsSync(vectorsPath), true);
+  assert.equal(fs.existsSync(examplePath), true);
+});
+
 test('repository excludes generated patch artifacts', () => {
   const patchArtifacts = fs.readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isFile() && /^patch.*\.diff$/i.test(entry.name))

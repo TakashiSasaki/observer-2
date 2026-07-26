@@ -31,6 +31,9 @@ jobs:
       - name: Check contract registry
         run: npm run contracts:check
 
+      - name: Run contract validation vectors
+        run: npm run test:contracts
+
       - name: Run lint
         run: npm run lint
 
