@@ -210,6 +210,12 @@ in `firestore.indexes.json`.
 The attachment picker is not based on feed visibility. It queries only active
 observations owned by the signed-in principal.
 
+The internal `/dev#tools` dummy-data cleanup additionally queries the owner,
+`deletedAt == null`, and `metadata.isDummyData == true`. This marker is an
+application convention inside the permitted `metadata` object, not a new
+canonical field. Cleanup soft-deletes only the selected endpoints and retains
+all memberships, consistent with the non-cascading deletion rule.
+
 ## 6. ID, time, location, and metadata rules
 
 ### 6.1 UUIDv7

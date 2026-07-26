@@ -1,4 +1,4 @@
-import { collection, doc, writeBatch, getDocs, query, where, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, writeBatch, getDocs, query, where, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { FIRESTORE_COLLECTIONS } from '../types';
 import { makeObservation, makeObservationSet, invalidateLocalCacheSnapshots, normalizeOptionalFields, membershipToFirestore, toFirestoreTimestamp } from '../services/firebaseService';
@@ -12,6 +12,13 @@ export enum OperationType {
   GET = 'get',
   WRITE = 'write',
 }
+
+/**
+ * One dummy set contains one set document, two observation documents, and two
+ * memberships. Four sets therefore stay within Firestore Rules' batch access
+ * call budget.
+ */
+export const MAX_DUMMY_SET_COUNT = 4;
 
 export interface FirestoreErrorInfo {
   error: string;
@@ -51,9 +58,12 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-export async function loadDummyData(count: number = 5, onProgress?: (msg: string) => void): Promise<void> {
+export async function loadDummyData(count: number = MAX_DUMMY_SET_COUNT, onProgress?: (msg: string) => void): Promise<void> {
   const user = auth.currentUser;
   if (!user) throw new Error('You must be logged in to load dummy data.');
+  if (!Number.isInteger(count) || count < 1 || count > MAX_DUMMY_SET_COUNT) {
+    throw new Error(`Dummy set count must be an integer from 1 through ${MAX_DUMMY_SET_COUNT}.`);
+  }
 
   const log = (msg: string) => {
     console.log(msg);
@@ -153,14 +163,15 @@ export async function removeDummyData(onProgress?: (msg: string) => void): Promi
     if (onProgress) onProgress(msg);
   };
 
-  log('Querying dummy sets, observations, and memberships...');
+  log('Querying active dummy sets and observations owned by the current user...');
 
   let setsSnapshot;
   try {
     setsSnapshot = await getDocs(query(
       collection(db, FIRESTORE_COLLECTIONS.observationSets),
       where('uid', '==', user.uid),
-      where('deletedAt', '==', null)
+      where('deletedAt', '==', null),
+      where('metadata.isDummyData', '==', true),
     ));
   } catch (e) {
     log(`Failed to fetch observation sets: ${e instanceof Error ? e.message : String(e)}`);
@@ -172,7 +183,8 @@ export async function removeDummyData(onProgress?: (msg: string) => void): Promi
     obsSnapshot = await getDocs(query(
       collection(db, FIRESTORE_COLLECTIONS.observations),
       where('uid', '==', user.uid),
-      where('deletedAt', '==', null)
+      where('deletedAt', '==', null),
+      where('metadata.isDummyData', '==', true),
     ));
   } catch (e) {
     log(`Failed to fetch observations: ${e instanceof Error ? e.message : String(e)}`);
@@ -184,39 +196,33 @@ export async function removeDummyData(onProgress?: (msg: string) => void): Promi
   let deletedSets = 0;
   let deletedObservations = 0;
 
-  log(`Found ${setsSnapshot.docs.length} active sets, ${obsSnapshot.docs.length} active observations owned by user.`);
+  log(`Found ${setsSnapshot.docs.length} active dummy sets and ${obsSnapshot.docs.length} active dummy observations owned by user.`);
 
   for (const docSnap of setsSnapshot.docs) {
-    const data = docSnap.data();
-    if (data.metadata?.isDummyData === true && data.deletedAt === null) {
-      log(`Soft deleting set: ${docSnap.id}`);
-      try {
-        await updateDoc(docSnap.ref, {
-          deletedAt: toFirestoreTimestamp(now),
-          updatedAt: toFirestoreTimestamp(now)
-        });
-        deletedSets++;
-      } catch (e: any) {
-        log(`Failed to delete set ${docSnap.id}: ${e.message || String(e)}`);
-        handleFirestoreError(e, OperationType.UPDATE, `${FIRESTORE_COLLECTIONS.observationSets}/${docSnap.id}`);
-      }
+    log(`Soft deleting set: ${docSnap.id}`);
+    try {
+      await updateDoc(docSnap.ref, {
+        deletedAt: toFirestoreTimestamp(now),
+        updatedAt: toFirestoreTimestamp(now)
+      });
+      deletedSets++;
+    } catch (e: unknown) {
+      log(`Failed to delete set ${docSnap.id}: ${e instanceof Error ? e.message : String(e)}`);
+      handleFirestoreError(e, OperationType.UPDATE, `${FIRESTORE_COLLECTIONS.observationSets}/${docSnap.id}`);
     }
   }
 
   for (const docSnap of obsSnapshot.docs) {
-    const data = docSnap.data();
-    if (data.metadata?.isDummyData === true && data.deletedAt === null) {
-      log(`Soft deleting observation: ${docSnap.id}`);
-      try {
-        await updateDoc(docSnap.ref, {
-          deletedAt: toFirestoreTimestamp(now),
-          updatedAt: toFirestoreTimestamp(now)
-        });
-        deletedObservations++;
-      } catch (e: any) {
-        log(`Failed to delete observation ${docSnap.id}: ${e.message || String(e)}`);
-        handleFirestoreError(e, OperationType.UPDATE, `${FIRESTORE_COLLECTIONS.observations}/${docSnap.id}`);
-      }
+    log(`Soft deleting observation: ${docSnap.id}`);
+    try {
+      await updateDoc(docSnap.ref, {
+        deletedAt: toFirestoreTimestamp(now),
+        updatedAt: toFirestoreTimestamp(now)
+      });
+      deletedObservations++;
+    } catch (e: unknown) {
+      log(`Failed to delete observation ${docSnap.id}: ${e instanceof Error ? e.message : String(e)}`);
+      handleFirestoreError(e, OperationType.UPDATE, `${FIRESTORE_COLLECTIONS.observations}/${docSnap.id}`);
     }
   }
 

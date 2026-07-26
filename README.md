@@ -127,6 +127,10 @@ planes for pull requests targeting `main`.
   reads use cursor pages and reject an export source that exceeds the bounded
   1,000-record limit rather than exporting a partial bundle. The authorized
   Firestore import commit path is not yet implemented.
+- The internal `/dev#tools` page can create a bounded dummy dataset for the
+  current Firebase principal. It marks only its own records with
+  `metadata.isDummyData`; cleanup soft-deletes those active endpoints and
+  deliberately retains memberships as relation history.
 - Entity deletion is a soft delete. Detaching an observation physically deletes
   only its membership.
 - Image data is currently represented by `imageUrl`; the UI can place a WebP
