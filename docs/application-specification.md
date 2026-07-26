@@ -94,6 +94,21 @@ layout. New pages must preserve the responsibility boundary. For example,
 internal diagnostics belong under `/dev`, while contracts intended for other
 applications belong under `/api`.
 
+### 5.1 Internal dummy-data tool
+
+`/dev#tools` provides a developer-only operational aid for a signed-in Firebase
+principal. It creates at most four private dummy sets, with two private dummy
+observations and their memberships per set. Every generated endpoint has
+`metadata.isDummyData: true`. The bound keeps the one-batch creation below the
+Firestore Rules access-call budget.
+
+Cleanup queries only active endpoints that are both owned by the current
+principal and explicitly marked as dummy data. It soft-deletes those endpoints;
+it neither hard-deletes endpoints nor deletes any membership. Thus it preserves
+the contract's non-cascading relation history and cannot select unmarked or
+other-owner records. Required composite indexes are declared in
+`firestore.indexes.json`.
+
 ## 6. User workflows
 
 ### 6.1 Authentication

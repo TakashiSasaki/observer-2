@@ -21,7 +21,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { CURRENT_SCHEMA_VERSION, FIRESTORE_COLLECTIONS } from '../types';
-import { loadDummyData, removeDummyData } from '../utils/dummyDataUtils';
+import { loadDummyData, MAX_DUMMY_SET_COUNT, removeDummyData } from '../utils/dummyDataUtils';
 
 type TabId = 'overview' | 'data' | 'security' | 'exchange' | 'delivery' | 'tools';
 
@@ -158,8 +158,8 @@ function DummyDataPanel() {
     setError(null);
     setLogs([]);
     try {
-      await loadDummyData(5, handleProgress);
-      setMessage('ダミーデータ（5件のSetと10件のObservation）を作成しました。');
+      await loadDummyData(MAX_DUMMY_SET_COUNT, handleProgress);
+      setMessage(`ダミーデータ（${MAX_DUMMY_SET_COUNT}件のSetと${MAX_DUMMY_SET_COUNT * 2}件のObservation）を作成しました。`);
     } catch (err: any) {
       setError(err.message || 'ダミーデータの作成に失敗しました。');
     } finally {
@@ -174,7 +174,7 @@ function DummyDataPanel() {
     setLogs([]);
     try {
       const result = await removeDummyData(handleProgress);
-      setMessage(`ダミーデータを削除しました (Sets: ${result.deletedSets}, Observations: ${result.deletedObservations})。`);
+      setMessage(`ダミーデータを論理削除しました (Sets: ${result.deletedSets}, Observations: ${result.deletedObservations})。Membershipは履歴として保持されます。`);
     } catch (err: any) {
       setError(err.message || 'ダミーデータの削除に失敗しました。');
     } finally {
@@ -206,7 +206,7 @@ function DummyDataPanel() {
   return (
     <Panel title="ダミーデータ管理" icon={<Wrench className="h-5 w-5 text-indigo-600" />}>
       <p className="text-sm leading-6 text-slate-600">
-        開発・テスト用のダミーデータを生成・削除します。生成されるデータは <code>metadata.isDummyData = true</code> を持ち、削除時はこのフラグを元に論理削除（Membershipは物理削除）を行います。
+        開発・テスト用に、現在のFirebase principalが所有するダミーデータを生成・論理削除します。生成は最大{MAX_DUMMY_SET_COUNT} Set・{MAX_DUMMY_SET_COUNT * 2} Observationに制限され、削除は <code>metadata.isDummyData = true</code> かつactiveなEndpointだけを対象にします。Membershipは履歴として保持されます。
       </p>
 
       {message && (

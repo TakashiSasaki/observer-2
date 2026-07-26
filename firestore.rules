@@ -153,7 +153,7 @@ service cloud.firestore {
         && isUuidV7(data.observationId)
         && membershipId == data.observationSetId + '__' + data.observationId
         && data.uid is string
-        && (data.position is int || data.position is number)
+        && data.position is int
         && data.position >= 0
         && data.schemaVersion == '2.0.0'
         && data.createdAt is timestamp;

@@ -2,19 +2,20 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { 
+import {
   assertFails,
   assertSucceeds,
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { runTransaction,  
+import {
   collection,
   doc,
   getDocs,
   limit,
   orderBy,
   query,
+  runTransaction,
   startAfter,
   where,
 } from 'firebase/firestore';
@@ -341,5 +342,4 @@ test('a Membership transaction is allowed only for active same-owner endpoints',
     transaction.set(membershipRef, membershipDocument(ids.observationSetA, ids.observationA, OWNER_UID));
   }));
 });
-
 

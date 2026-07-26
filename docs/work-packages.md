@@ -63,6 +63,8 @@ The following behaviors have automated coverage:
 - bounded-read snapshots record scope, principal, limit, result count, and
   completeness; cursor pagination and a next-page probe distinguish an
   exhausted exact-limit result from an incomplete prefix;
+- owner-scoped `/dev` dummy-data creation and non-cascading cleanup, including
+  the marker, active-state, and current-owner query boundary.
 
 ## 4. Remaining work, in recommended order
 
