@@ -174,7 +174,7 @@ function DummyDataPanel() {
     setLogs([]);
     try {
       const result = await removeDummyData(handleProgress);
-      setMessage(`ダミーデータを削除しました (Sets: ${result.deletedSets}, Observations: ${result.deletedObservations}, Memberships: ${result.deletedMemberships})。`);
+      setMessage(`ダミーデータを削除しました (Sets: ${result.deletedSets}, Observations: ${result.deletedObservations})。`);
     } catch (err: any) {
       setError(err.message || 'ダミーデータの削除に失敗しました。');
     } finally {

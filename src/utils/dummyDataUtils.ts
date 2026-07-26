@@ -144,7 +144,7 @@ export async function loadDummyData(count: number = 5, onProgress?: (msg: string
   invalidateLocalCacheSnapshots(user.uid);
 }
 
-export async function removeDummyData(onProgress?: (msg: string) => void): Promise<{ deletedSets: number, deletedObservations: number, deletedMemberships: number }> {
+export async function removeDummyData(onProgress?: (msg: string) => void): Promise<{ deletedSets: number, deletedObservations: number }> {
   const user = auth.currentUser;
   if (!user) throw new Error('You must be logged in to delete dummy data.');
 
@@ -179,24 +179,12 @@ export async function removeDummyData(onProgress?: (msg: string) => void): Promi
     handleFirestoreError(e, OperationType.GET, FIRESTORE_COLLECTIONS.observations);
   }
 
-  let membershipsSnapshot;
-  try {
-    membershipsSnapshot = await getDocs(query(
-      collection(db, FIRESTORE_COLLECTIONS.memberships),
-      where('uid', '==', user.uid)
-    ));
-  } catch (e) {
-    log(`Failed to fetch memberships: ${e instanceof Error ? e.message : String(e)}`);
-    handleFirestoreError(e, OperationType.GET, FIRESTORE_COLLECTIONS.memberships);
-  }
-
   const now = new Date().toISOString();
 
   let deletedSets = 0;
   let deletedObservations = 0;
-  let deletedMemberships = 0;
 
-  log(`Found ${setsSnapshot.docs.length} active sets, ${obsSnapshot.docs.length} active observations, ${membershipsSnapshot.docs.length} memberships owned by user.`);
+  log(`Found ${setsSnapshot.docs.length} active sets, ${obsSnapshot.docs.length} active observations owned by user.`);
 
   for (const docSnap of setsSnapshot.docs) {
     const data = docSnap.data();
@@ -232,28 +220,11 @@ export async function removeDummyData(onProgress?: (msg: string) => void): Promi
     }
   }
 
-  const dummySetIds = new Set(setsSnapshot.docs.filter(d => d.data().metadata?.isDummyData === true).map(d => d.id));
-  const dummyObsIds = new Set(obsSnapshot.docs.filter(d => d.data().metadata?.isDummyData === true).map(d => d.id));
-
-  for (const docSnap of membershipsSnapshot.docs) {
-    const data = docSnap.data();
-    if (dummySetIds.has(data.observationSetId) || dummyObsIds.has(data.observationId)) {
-      log(`Physically deleting membership: ${docSnap.id}`);
-      try {
-        await deleteDoc(docSnap.ref);
-        deletedMemberships++;
-      } catch (e: any) {
-        log(`Failed to delete membership ${docSnap.id}: ${e.message || String(e)}`);
-        handleFirestoreError(e, OperationType.DELETE, `${FIRESTORE_COLLECTIONS.memberships}/${docSnap.id}`);
-      }
-    }
-  }
-
-  if (deletedSets > 0 || deletedObservations > 0 || deletedMemberships > 0) {
+  if (deletedSets > 0 || deletedObservations > 0) {
     invalidateLocalCacheSnapshots(user.uid);
   } else {
     log('No dummy data found to delete.');
   }
 
-  return { deletedSets, deletedObservations, deletedMemberships };
+  return { deletedSets, deletedObservations };
 }

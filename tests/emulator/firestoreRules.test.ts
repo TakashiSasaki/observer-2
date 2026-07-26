@@ -2,14 +2,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import {
+import { 
   assertFails,
   assertSucceeds,
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import {
+import { runTransaction,  
   collection,
+  doc,
   getDocs,
   limit,
   orderBy,
@@ -186,6 +187,9 @@ test('a Membership write requires active endpoints owned by its authenticated wr
   await assertFails(ownerDb.doc(`observationSetMemberships/${ids.observationSetB}__${ids.observationB}`).set(
     membershipDocument(ids.observationSetB, ids.observationB, OWNER_UID),
   ));
+  await assertFails(ownerDb.doc(`observationSetMemberships/${ids.observationSetA}__${ids.observationA}`).set(
+    { ...membershipDocument(ids.observationSetA, ids.observationA, OWNER_UID), position: 0.5 },
+  ));
 });
 
 test('a shared set allows relation reads without granting Observation content access', async () => {
@@ -242,6 +246,36 @@ test('the attachment picker can query only the active Observations owned by its 
   );
 });
 
+test('dummy cleanup queries only the active marked records of the current owner', async () => {
+  await Promise.all([
+    seed(['observations', ids.observationA], observationDocument(ids.observationA, OWNER_UID, 'private', [], {
+      metadata: { isDummyData: true },
+    })),
+    seed(['observations', ids.observationB], observationDocument(ids.observationB, OWNER_UID, 'private', [], {
+      metadata: {},
+    })),
+    seed(['observations', ids.observationC], observationDocument(ids.observationC, OTHER_UID, 'private', [], {
+      metadata: { isDummyData: true },
+    })),
+  ]);
+
+  const ownerDb = authenticatedFirestore(OWNER_UID);
+  const markedOwnRecords = await assertSucceeds(getDocs(query(
+    collection(ownerDb, 'observations'),
+    where('uid', '==', OWNER_UID),
+    where('deletedAt', '==', null),
+    where('metadata.isDummyData', '==', true),
+  )));
+  assert.deepEqual(markedOwnRecords.docs.map((snapshot) => snapshot.id), [ids.observationA]);
+
+  await assertFails(getDocs(query(
+    collection(ownerDb, 'observations'),
+    where('uid', '==', OTHER_UID),
+    where('deletedAt', '==', null),
+    where('metadata.isDummyData', '==', true),
+  )));
+});
+
 test('bounded owner reads can continue with a cursor and detect exhaustion', async () => {
   await Promise.all([
     seed(['observations', ids.observationA], observationDocument(ids.observationA, OWNER_UID, 'private', [], {
@@ -288,33 +322,24 @@ test('bounded owner reads can continue with a cursor and detect exhaustion', asy
   assert.equal(exhaustionProbe.empty, true);
 });
 
-test('membership write within transaction', async () => {
+test('a Membership transaction is allowed only for active same-owner endpoints', async () => {
   await seedOwnedEndpoints(ids.observationSetA, ids.observationA, OWNER_UID);
   const db = authenticatedFirestore(OWNER_UID);
-  
-  await assertSucceeds(runTransaction(db, async (t) => {
-    t.set(
-      db.doc(`observationSetMemberships/${ids.observationSetA}__${ids.observationA}`),
-      membershipDocument(ids.observationSetA, ids.observationA, OWNER_UID)
-    );
+  const setRef = doc(db, 'observationSets', ids.observationSetA);
+  const observationRef = doc(db, 'observations', ids.observationA);
+  const membershipRef = doc(db, 'observationSetMemberships', `${ids.observationSetA}__${ids.observationA}`);
+
+  await assertSucceeds(runTransaction(db, async (transaction) => {
+    const [setSnapshot, observationSnapshot, membershipSnapshot] = await Promise.all([
+      transaction.get(setRef),
+      transaction.get(observationRef),
+      transaction.get(membershipRef),
+    ]);
+    assert.equal(setSnapshot.exists(), true);
+    assert.equal(observationSnapshot.exists(), true);
+    assert.equal(membershipSnapshot.exists(), false);
+    transaction.set(membershipRef, membershipDocument(ids.observationSetA, ids.observationA, OWNER_UID));
   }));
 });
 
-test('membership write within transaction with gets', async () => {
-  await seedOwnedEndpoints(ids.observationSetA, ids.observationA, OWNER_UID);
-  const db = authenticatedFirestore(OWNER_UID);
-  
-  await assertSucceeds(runTransaction(db, async (t) => {
-    const setRef = db.doc(`observationSets/${ids.observationSetA}`);
-    const obsRef = db.doc(`observations/${ids.observationA}`);
-    const memRef = db.doc(`observationSetMemberships/${ids.observationSetA}__${ids.observationA}`);
-    await t.get(setRef);
-    await t.get(obsRef);
-    await t.get(memRef).catch(() => {});
-    
-    t.set(
-      memRef,
-      membershipDocument(ids.observationSetA, ids.observationA, OWNER_UID)
-    );
-  }));
-});
+

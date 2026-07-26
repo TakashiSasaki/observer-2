@@ -213,6 +213,9 @@ service cloud.firestore {
     }
 
     match /observationSetMemberships/{membershipId} {
+      // The attach transaction reads the deterministic membership ID before
+      // creating it. There is no resource data to authorize in that case;
+      // existing membership documents remain constrained by the set ACL.
       allow read: if resource == null || canReadMembership(resource.data);
       allow create: if isAuthenticated()
         && request.resource.data.uid == request.auth.uid
