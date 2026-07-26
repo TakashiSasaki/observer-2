@@ -16,7 +16,7 @@ Normative implementation sources:
 | Firestore path/field conversion | `src/services/firebaseService.ts` |
 | Firestore authorization and write constraints | `firestore.rules` |
 | Firestore indexes | `firestore.indexes.json` |
-| Structural exchange schema | `schemas/observation-interchange.schema.json` |
+| Contract registry and structural exchange schema | `contracts/registry.json`, `contracts/observer-observation-interchange/releases/2.0.0/manifest.json`, `contracts/observer-observation-interchange/releases/2.0.0/schema.json` |
 | Semantic exchange validation and canonical serialization | `src/domain/observationInterchange.ts` |
 | Persistence summary | `firebase-blueprint.json` |
 
@@ -343,7 +343,7 @@ No additional top-level properties are allowed.
 
 ### 8.1 Structural validation
 
-`schemas/observation-interchange.schema.json` describes:
+`contracts/observer-observation-interchange/releases/2.0.0/schema.json` describes:
 
 - exact top-level properties;
 - entity required and optional fields;
@@ -352,6 +352,12 @@ No additional top-level properties are allowed.
 - closed canonical entity shapes;
 - metadata subshapes;
 - unique array items.
+
+The release manifest records contract ID `jp.moukaeritai.observer.observation-interchange`,
+the `observer-owner-scoped` profile, and the immutable UUIDv4 Schema ID
+`2f1fd347-e99b-477e-884a-86a7dbb0358b`. The Schema `$id` is the corresponding
+UUID URN. Resolving that identifier to a file or HTTP endpoint is outside the
+current contract, and the Schema has no external `$ref` values.
 
 JSON Schema alone cannot express every cross-record rule.
 

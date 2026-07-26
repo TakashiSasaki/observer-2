@@ -1,0 +1,14 @@
+{
+  "registryVersion": 1,
+  "contracts": [
+    {
+      "contractId": "jp.moukaeritai.observer.observation-interchange",
+      "releases": [
+        {
+          "version": "2.0.0",
+          "manifest": "contracts/observer-observation-interchange/releases/2.0.0/manifest.json"
+        }
+      ]
+    }
+  ]
+}

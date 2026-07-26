@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -5,11 +6,35 @@ import test from 'node:test';
 
 const root = process.cwd();
 const readJson = (file) => JSON.parse(fs.readFileSync(path.join(root, file), 'utf8'));
+const contractSchemaPath = 'contracts/observer-observation-interchange/releases/2.0.0/schema.json';
+const contractManifestPath = 'contracts/observer-observation-interchange/releases/2.0.0/manifest.json';
+const contractRegistryPath = 'contracts/registry.json';
 
 test('v2 interchange schema uses only normalized top-level entity arrays', () => {
-  const schema = readJson('schemas/observation-interchange.schema.json');
+  const schema = readJson(contractSchemaPath);
+  const manifest = readJson(contractManifestPath);
+  const registry = readJson(contractRegistryPath);
   const interchange = fs.readFileSync(path.join(root, 'src/domain/observationInterchange.ts'), 'utf8');
   assert.equal(schema.properties.schemaVersion.const, '2.0.0');
+  assert.equal(schema.$id, 'urn:uuid:2f1fd347-e99b-477e-884a-86a7dbb0358b');
+  assert.equal(manifest.contractId, 'jp.moukaeritai.observer.observation-interchange');
+  assert.equal(manifest.contractVersion, '2.0.0');
+  assert.equal(manifest.profile, 'observer-owner-scoped');
+  assert.equal(manifest.schemaId, '2f1fd347-e99b-477e-884a-86a7dbb0358b');
+  assert.equal(manifest.schemaUri, schema.$id);
+  assert.equal(manifest.schemaPath, contractSchemaPath);
+  assert.equal(
+    manifest.schemaSha256,
+    crypto.createHash('sha256').update(fs.readFileSync(path.join(root, contractSchemaPath))).digest('hex'),
+  );
+  assert.deepEqual(registry.contracts, [{
+    contractId: 'jp.moukaeritai.observer.observation-interchange',
+    releases: [{
+      version: '2.0.0',
+      manifest: 'contracts/observer-observation-interchange/releases/2.0.0/manifest.json',
+    }],
+  }]);
+  assert.equal(fs.existsSync(path.join(root, 'schemas/observation-interchange.schema.json')), false);
   assert.deepEqual(Object.keys(schema.properties).sort(), ['exportedAt', 'memberships', 'observationSets', 'observations', 'schemaVersion']);
   assert.equal(schema.$defs.Observation.properties.parentSetId, undefined);
   assert.equal(schema.$defs.ObservationSet.properties.observationIds, undefined);
