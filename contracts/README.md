@@ -6,12 +6,11 @@ owner-scoped profile `2.0.0`.
 
 ## C01 scope
 
-C01 moves the structural JSON Schema for the existing observation interchange
-format into the contract registry. It does not change the accepted bundle
-shape, the Firestore model, or the semantic validation behavior. The existing
-semantic validator and deterministic canonicalization in
-`src/domain/observationInterchange.ts` remain authoritative until a later work
-package moves them into a contract package.
+C01 moved the structural JSON Schema for the existing observation interchange
+format into the contract registry. It did not change the accepted bundle
+shape, the Firestore model, or the semantic validation behavior at that stage;
+C02 now provides the contract-owned reference validator and canonicalization
+boundary described below.
 
 The release is identified by:
 
@@ -43,3 +42,39 @@ npm run contracts:check
 
 The SHA-256 recorded in the manifest is the hash of the exact UTF-8 bytes of
 the release `schema.json`.
+
+## C02 scope
+
+C02 adds the reference validation boundary for the same immutable `2.0.0`
+release. `src/contracts/validator.ts` executes the Draft 2020-12 Schema with
+Ajv and `ajv-formats`, while `src/contracts/semanticValidation.ts` checks the
+cross-record rules that JSON Schema cannot express: deterministic membership
+IDs, endpoint references, owner equality, ACL visibility, location ranges, and
+timestamp ordering. Both layers return stable diagnostic codes and RFC 6901 JSON
+Pointers through `src/contracts/diagnostics.ts`.
+
+The contract-owned types are in `src/contracts/types.ts`; `src/types.ts`
+re-exports them and retains only application projections, drafts, Firebase
+collection names, and user types. The existing functions in
+`src/domain/observationInterchange.ts` remain compatibility wrappers used by
+the UI and service, but their bundle assertion now calls the reference
+validator. Deterministic ordering and serialization helpers are in
+`src/contracts/canonicalize.ts`.
+
+The non-normative release examples and conformance vectors are stored under:
+
+```text
+contracts/observer-observation-interchange/releases/2.0.0/examples/
+contracts/observer-observation-interchange/releases/2.0.0/test-vectors/
+```
+
+They do not change the Schema, manifest, payload, or release identity. Run the
+reference-vector tests with:
+
+```bash
+npm run test:contracts
+```
+
+C02 still does not implement a UUID resolver, public generated API, external
+`$ref`, Firestore import commit, or a generic profile independent of the
+Observer owner-scoped rules.

@@ -11,13 +11,16 @@ Normative implementation sources:
 
 | Layer | Source |
 |---|---|
-| TypeScript shapes and collection names | `src/types.ts` |
+| Contract TypeScript shapes | `src/contracts/types.ts` (re-exported by `src/types.ts`) |
+| Application projections and collection names | `src/types.ts` |
 | Runtime entity and relation invariants | `src/domain/observationDomain.ts` |
 | Firestore path/field conversion | `src/services/firebaseService.ts` |
 | Firestore authorization and write constraints | `firestore.rules` |
 | Firestore indexes | `firestore.indexes.json` |
 | Contract registry and structural exchange schema | `contracts/registry.json`, `contracts/observer-observation-interchange/releases/2.0.0/manifest.json`, `contracts/observer-observation-interchange/releases/2.0.0/schema.json` |
-| Semantic exchange validation and canonical serialization | `src/domain/observationInterchange.ts` |
+| Structural exchange validation and diagnostics | `src/contracts/validator.ts`, `src/contracts/diagnostics.ts` |
+| Semantic exchange validation | `src/contracts/semanticValidation.ts` |
+| Canonical exchange serialization | `src/contracts/canonicalize.ts`, with compatibility API in `src/domain/observationInterchange.ts` |
 | Persistence summary | `firebase-blueprint.json` |
 
 All affected layers and tests must change together when the contract changes.

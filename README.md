@@ -121,9 +121,10 @@ planes for pull requests targeting `main`.
 The structural interchange Schema is maintained in the contract registry under
 `contracts/observer-observation-interchange/releases/2.0.0/schema.json`.
 `contracts/registry.json` and its release manifest identify it with the fixed
-UUIDv4 Schema ID `2f1fd347-e99b-477e-884a-86a7dbb0358b`. The current semantic
-validator and deterministic serialization remain in
-`src/domain/observationInterchange.ts`.
+UUIDv4 Schema ID `2f1fd347-e99b-477e-884a-86a7dbb0358b`. Structural validation,
+semantic validation, diagnostics, and canonicalization are implemented in
+`src/contracts/`; `src/domain/observationInterchange.ts` retains the existing
+compatibility API used by the service and UI.
 
 ## Important current boundaries
 

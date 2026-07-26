@@ -24,19 +24,20 @@ one.
 
 | Concern | Authoritative files |
 |---|---|
-| Canonical TypeScript entities | `src/types.ts` |
-| Entity and cross-record invariants | `src/domain/observationDomain.ts` |
+| Contract-owned canonical TypeScript entities | `src/contracts/types.ts`, re-exported by `src/types.ts` |
+| Entity and cross-record invariants | `src/domain/observationDomain.ts`, `src/contracts/semanticValidation.ts` |
 | Normalized local cache | `src/domain/normalizedObservationCache.ts` |
 | Cache principal/freshness policy | `src/domain/cachePolicy.ts` |
 | Remote read failure policy | `src/domain/remoteReadPolicy.ts` |
-| Interchange semantics and deterministic serialization | `src/domain/observationInterchange.ts` |
+| Interchange validation and diagnostics | `src/contracts/validator.ts`, `src/contracts/semanticValidation.ts`, `src/contracts/diagnostics.ts` |
+| Interchange canonicalization and compatibility API | `src/contracts/canonicalize.ts`, `src/domain/observationInterchange.ts` |
 | Interchange contract registry and structural schema | `contracts/registry.json`, `contracts/observer-observation-interchange/releases/2.0.0/manifest.json`, `contracts/observer-observation-interchange/releases/2.0.0/schema.json` |
 | Firestore conversion and operations | `src/services/firebaseService.ts` |
 | Query shapes | `src/services/firestoreQueryPlan.ts` |
 | Firestore authorization and write validation | `firestore.rules` |
 | Required composite indexes | `firestore.indexes.json` |
 | Persistence overview | `firebase-blueprint.json` |
-| Executable acceptance evidence | `tests/` and `.github/workflows/m2m-baseline.yml` |
+| Executable acceptance evidence | `tests/`, `contracts/**/test-vectors/`, and `.github/workflows/m2m-baseline.yml` |
 | Product behavior and interface surfaces | `docs/application-specification.md` |
 | Current WP status | `docs/work-packages.md` |
 | In-memory M01–M03 acceptance harness | `src/domain/observationAcceptanceHarness.ts`, `src/pages/TestPage.tsx` |
@@ -111,9 +112,13 @@ renaming a top-level canonical field is not a transparent change to 2.0.0.
 - Treat a release artifact as immutable. A normative Schema change requires a
   new lowercase UUIDv4 Schema ID and a new release; do not rewrite an existing
   manifest or Schema in place.
-- A Schema `$id` is the UUID URN recorded in its manifest. C01 does not provide
-  a resolver from that identifier to a file or HTTP endpoint, and external
-  `$ref` values are not permitted.
+- A Schema `$id` is the UUID URN recorded in its manifest. C01/C02 do not
+  provide a resolver from that identifier to a file or HTTP endpoint, and
+  external `$ref` values are not permitted.
+- Structural validation must execute the registered Draft 2020-12 release
+  Schema with `ajv` and `ajv-formats`. Semantic validation must return stable
+  diagnostic codes and JSON Pointer locations for rules the Schema cannot
+  express.
 
 ## Interface surfaces
 
