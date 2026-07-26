@@ -13,6 +13,7 @@
     "test:domain": "node --experimental-strip-types --test tests/domain/observationDomain.test.ts tests/domain/firestorePersistence.test.ts tests/domain/observationInterchange.test.ts",
     "test:firestore:emulator": "firebase emulators:exec --only firestore --project demo-observer-2 \"node --experimental-strip-types --test tests/emulator/firestoreRules.test.ts\"",
     "test:schema": "node --test tests/schema/schema.test.mjs",
+    "contracts:check": "node scripts/check-contract-registry.mjs",
     "verify:m2m:harness": "node scripts/verify-m2m-harness.mjs",
     "test:m2m:harness": "node --test tests/m2m/harness.test.mjs"
   },

@@ -8,7 +8,8 @@ Before changing application code, read all of:
 2. `docs/application-specification.md`
 3. `docs/data-contract-2.0.0.md`
 4. `docs/work-packages.md`
-5. The source-of-truth files for the area being changed, as listed below
+5. `contracts/README.md`
+6. The source-of-truth files for the area being changed, as listed below
 
 Do not infer the current contract from the history of
 `TakashiSasaki/scan.moukaeritai.work`. This repository is a clean rebuild and
@@ -29,7 +30,7 @@ one.
 | Cache principal/freshness policy | `src/domain/cachePolicy.ts` |
 | Remote read failure policy | `src/domain/remoteReadPolicy.ts` |
 | Interchange semantics and deterministic serialization | `src/domain/observationInterchange.ts` |
-| Interchange structural schema | `schemas/observation-interchange.schema.json` |
+| Interchange contract registry and structural schema | `contracts/registry.json`, `contracts/observer-observation-interchange/releases/2.0.0/manifest.json`, `contracts/observer-observation-interchange/releases/2.0.0/schema.json` |
 | Firestore conversion and operations | `src/services/firebaseService.ts` |
 | Query shapes | `src/services/firestoreQueryPlan.ts` |
 | Firestore authorization and write validation | `firestore.rules` |
@@ -107,6 +108,12 @@ renaming a top-level canonical field is not a transparent change to 2.0.0.
 - Keep TypeScript assertions, JSON Schema, Firestore Rules, blueprint,
   converters, developer documentation, and tests synchronized.
 - Do not weaken one validation layer merely to make another layer pass.
+- Treat a release artifact as immutable. A normative Schema change requires a
+  new lowercase UUIDv4 Schema ID and a new release; do not rewrite an existing
+  manifest or Schema in place.
+- A Schema `$id` is the UUID URN recorded in its manifest. C01 does not provide
+  a resolver from that identifier to a file or HTTP endpoint, and external
+  `$ref` values are not permitted.
 
 ## Interface surfaces
 

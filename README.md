@@ -31,6 +31,8 @@ in order:
    remaining work, acceptance criteria, and effort estimate.
 5. [`audit/m2m/README.md`](audit/m2m/README.md) — how to interpret the frozen
    WP00 audit registry.
+6. [`contracts/README.md`](contracts/README.md) — versioned interchange
+   contract artifacts and release identity rules.
 
 The rendered internal developer summary is available at `/dev`.
 
@@ -102,6 +104,7 @@ Run the checks that do not require Java:
 ```bash
 npm run lint
 npm run build
+npm run contracts:check
 npm test
 npm run verify:m2m:harness
 ```
@@ -114,6 +117,13 @@ npm run test:firestore:emulator
 
 GitHub Actions provisions Node.js 22 and Temurin JDK 21 and runs both validation
 planes for pull requests targeting `main`.
+
+The structural interchange Schema is maintained in the contract registry under
+`contracts/observer-observation-interchange/releases/2.0.0/schema.json`.
+`contracts/registry.json` and its release manifest identify it with the fixed
+UUIDv4 Schema ID `2f1fd347-e99b-477e-884a-86a7dbb0358b`. The current semantic
+validator and deterministic serialization remain in
+`src/domain/observationInterchange.ts`.
 
 ## Important current boundaries
 

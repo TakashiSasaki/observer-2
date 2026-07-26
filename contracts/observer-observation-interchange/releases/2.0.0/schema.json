@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://moukaeritai.work/schemas/observation-interchange-2.0.0.schema.json",
+  "$id": "urn:uuid:2f1fd347-e99b-477e-884a-86a7dbb0358b",
   "title": "Observation Interchange Format 2.0.0",
   "description": "A normalized exchange bundle. Observations, observation sets, and memberships are separate canonical arrays. Cross-record tuple, ownership, and reference checks are semantic validation requirements in addition to this structural schema.",
   "type": "object",

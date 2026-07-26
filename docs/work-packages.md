@@ -39,6 +39,21 @@ One **iteration** in the estimate means one bounded change cycle:
 The implementation evidence above does not mean the entire application roadmap
 is complete. It evaluates the WP00–WP07 many-to-many data-model program only.
 
+## 2.1 Separate contract distribution track: C01
+
+C01 is a separate contract-distribution track and does not change the WP00–WP07
+statuses, remaining acceptance activities, or effort estimates above. It moves
+the existing structural interchange Schema into the `contracts/` registry,
+records release `2.0.0` as the `observer-owner-scoped` profile, and assigns the
+fixed UUIDv4 Schema ID
+`2f1fd347-e99b-477e-884a-86a7dbb0358b` (`urn:uuid:` in JSON Schema `$id`).
+
+C01 deliberately leaves semantic validation and deterministic canonicalization
+in `src/domain/observationInterchange.ts`, does not add `schemaId` to exchange
+payloads, and does not implement a Schema resolver, external `$ref`, generated
+public API artifacts, or Firestore import commit. The registry and release
+manifest are checked by `npm run contracts:check`.
+
 ## 3. Completed requirement coverage
 
 The following behaviors have automated coverage:

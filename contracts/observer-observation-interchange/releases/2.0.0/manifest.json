@@ -1,0 +1,10 @@
+{
+  "contractId": "jp.moukaeritai.observer.observation-interchange",
+  "contractVersion": "2.0.0",
+  "profile": "observer-owner-scoped",
+  "status": "active",
+  "schemaId": "2f1fd347-e99b-477e-884a-86a7dbb0358b",
+  "schemaUri": "urn:uuid:2f1fd347-e99b-477e-884a-86a7dbb0358b",
+  "schemaPath": "contracts/observer-observation-interchange/releases/2.0.0/schema.json",
+  "schemaSha256": "7fdf67f1410c38e36ca5154f7d24d7dd78557f2cbcfdb331e900257e149730e9"
+}

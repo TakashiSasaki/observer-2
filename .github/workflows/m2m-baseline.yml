@@ -26,7 +26,10 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        run: npm install --ignore-scripts
+        run: npm ci --ignore-scripts
+
+      - name: Check contract registry
+        run: npm run contracts:check
 
       - name: Run lint
         run: npm run lint
@@ -59,7 +62,7 @@ jobs:
           java-version: '21'
 
       - name: Install dependencies
-        run: npm install --ignore-scripts
+        run: npm ci --ignore-scripts
 
       - name: Run Firestore Emulator rules tests
         run: npm run test:firestore:emulator
