@@ -209,8 +209,8 @@ test('restored developer documentation describes the normalized model without re
   assert.match(contract, /ObservationSetMembership/);
   assert.match(contract, /Never send a view to a Firestore entity converter/);
   assert.match(contract, /not currently specified as RFC 8785 JCS/);
-  assert.match(workPackages, /3 further iterations after this change/);
-  assert.match(workPackages, /WP06.*\*\*partial\*\*/);
+  assert.match(workPackages, /2 further iterations after this change/);
+  assert.match(workPackages, /WP06.*\*\*implemented\*\*/);
   assert.match(auditReadme, /not the\s+current implementation status/);
 });
 
@@ -231,9 +231,12 @@ test('exchange UI is owner-scoped, bounded, and explicitly no-write', () => {
 
   assert.match(exchangePanel, /exportOwnedObservationInterchangeBundle/);
   assert.match(exchangePanel, /dryRunOwnedObservationInterchangeImport/);
+  assert.match(exchangePanel, /commitOwnedObservationInterchangeImport/);
   assert.match(exchangePanel, /Firestoreには書き込んでいません/);
   assert.match(service, /createObservationInterchangeBundle/);
   assert.match(service, /analyzeObservationInterchangeImport/);
+  assert.match(service, /planObservationInterchangeImportCommit/);
+  assert.match(service, /runTransaction/);
   assert.match(service, /never writes to\s+\* Firestore/);
   assert.match(modal, /観測セットを作成/);
   assert.match(modal, /captureMode === 'composite'/);

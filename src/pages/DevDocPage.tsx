@@ -71,7 +71,7 @@ const workPackageRows = [
   { id: 'WP03', scope: 'Firestore query・index', status: 'implemented', remaining: '本番index反映は運用作業' },
   { id: 'WP04', scope: 'Rules・Emulator', status: 'implemented', remaining: '最終treeでもJDK 21検証' },
   { id: 'WP05', scope: 'UI', status: 'implemented', remaining: 'M01〜M03とcomposite操作の手動受入' },
-  { id: 'WP06', scope: '交換形式2.0.0', status: 'partial', remaining: 'Firestore import commitの方針と実装' },
+  { id: 'WP06', scope: '交換形式2.0.0', status: 'implemented', remaining: '実Firestore/Auth import受入れと最終台帳closeout' },
   { id: 'WP07', scope: 'legacy除去・最終検証', status: 'partial', remaining: '実Firestore/Auth受入・closeout' },
 ];
 
@@ -424,8 +424,7 @@ export default function DevDocPage() {
               </Panel>
               <Panel title="現在未実装の提供面" icon={<Clock3 className="h-5 w-5 text-amber-600" />}>
                 <ul className="list-disc space-y-2 pl-5 text-sm leading-6 text-slate-600">
-                  <li>衝突・所有権ポリシーを伴うFirestore import commit。</li>
-                  <li><code>/admin</code> と、実Firestore/Authへ接続した受入れ記録。</li>
+                  <li><code>/admin</code> と、実Firestore/Authへ接続したM01〜M03・import commit受入れ記録。</li>
                   <li>versioned external API <code>/api/vN</code>。</li>
                   <li>Cloud Storage upload・cleanup・URL lifecycle。</li>
                   <li>Observation更新・削除およびMembership並べ替えの完全なUI。</li>
@@ -701,7 +700,7 @@ interface NormalizedObservationCache {
                 exportはentity ID順、object key順で決定的にserializeします。これは独自のstable JSONであり、現時点ではRFC 8785 JCS準拠を主張しません。
               </p>
               <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-6 text-amber-950">
-                UIはowner-scoped export/downloadと、構造・意味・owner・reference・deletion・collision・sizeを確認するno-write import dry-runを提供します。Firestore commit、owner remapping、conflict policyは未実装です。
+                UIはowner-scoped export/downloadと、構造・意味・owner・reference・deletion・collision・sizeを確認するno-write import dry-runを提供し、成功後の明示操作でFirestore commitも実行します。commitはowner remappingを行わず、同一canonical recordを再利用し、ID内容衝突とinactive endpointを全体拒否します。1 transactionは500 records・9 membershipsまでです。
               </div>
             </Panel>
 
@@ -774,13 +773,12 @@ npm run test:firestore:emulator  # Java 21`}</pre>
                   <div className="mt-1 text-xs font-bold text-blue-800">この文書・/dev変更がmainへ反映された後</div>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-slate-600">
-                  PR #13反映後の基準では、この変更を含めて6回、ここからさらに3回です。妥当範囲は以後2〜5回。import方針の決定速度と手動検証で見つかる不具合数が主な不確実性です。
+                  PR #13反映後の基準では、この変更を含めて6回、ここからさらに2回です。妥当範囲は以後1〜4回。実Firestore/Auth受入れで見つかる不具合数が主な不確実性です。
                 </p>
               </Panel>
               <Panel title="推奨する残りの順序" icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}>
                 <ol className="list-decimal space-y-2 pl-5 text-sm leading-6 text-slate-600">
-                  <li>Firestore importのownership・conflict・atomicity・receipt方針。</li>
-                  <li>実Firestore/AuthでのM01〜M03と<code>/test</code>受入れ。</li>
+                  <li>実Firestore/AuthでのM01〜M03、import commit、<code>/test</code>受入れ。</li>
                   <li>累積台帳、全CI、最終tree closeout。</li>
                 </ol>
               </Panel>

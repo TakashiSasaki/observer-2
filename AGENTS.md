@@ -73,13 +73,20 @@ status ledger. See `audit/m2m/README.md`.
 13. A cache fallback is allowed only for a fresh, principal-scoped owner (`mine`)
     snapshot after a classified transient read failure. It is never an
     authorization source for shared or public feeds.
-14. A remote-required operation, including interchange export and import
-    dry-run, must fail rather than use a possibly incomplete local cache.
+14. A remote-required operation, including interchange export, import dry-run,
+    and import commit, must fail rather than use a possibly incomplete local
+    cache.
 15. A cache fallback snapshot must be bound to its feed scope and principal.
     Bounded reads use cursor pages and a next-page probe. A snapshot is
     complete only when the probe confirms that no more matching records exist;
     a maximum reached with another page is incomplete and cannot be used as
     fallback. Successful mutations invalidate such snapshots.
+16. An authorized interchange import preserves the signed-in owner UID. It
+    creates only missing canonical records, skips byte-equivalent canonical
+    records, rejects ID-content conflicts and inactive membership endpoints,
+    and applies no partial writes. One transaction is limited to 500 bundle
+    records and 9 new memberships to remain within the current Rules relation
+    access bound.
 
 ## Forbidden legacy behavior
 

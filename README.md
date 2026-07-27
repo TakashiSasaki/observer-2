@@ -136,8 +136,12 @@ compatibility API used by the service and UI.
   validates structure, semantics, ownership, references, deletions, collisions,
   and practical size limits without writing to Firestore. Owner-scoped remote
   reads use cursor pages and reject an export source that exceeds the bounded
-  1,000-record limit rather than exporting a partial bundle. The authorized
-  Firestore import commit path is not yet implemented.
+  1,000-record limit rather than exporting a partial bundle. An explicit commit
+  then preserves the signed-in owner, creates only missing records, treats
+  identical canonical records as idempotent no-ops, and rejects owner,
+  reference, or ID-content conflicts. The commit is one transaction bounded to
+  500 bundle records and 9 new memberships; its receipt includes the raw
+  bundle SHA-256 and created/skipped counts.
 - The internal `/dev#tools` page can create a bounded dummy dataset for the
   current Firebase principal. It marks only its own records with
   `metadata.isDummyData`; cleanup soft-deletes those active endpoints and

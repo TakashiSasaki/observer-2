@@ -9,12 +9,16 @@ import {
 } from 'lucide-react';
 import {
   invalidObservationInterchangeImportDryRunReport,
+  MAX_INTERCHANGE_COMMIT_MEMBERSHIP_WRITES,
+  MAX_INTERCHANGE_COMMIT_WRITES,
   MAX_INTERCHANGE_FILE_BYTES,
   MAX_INTERCHANGE_RECORDS,
   serializeObservationInterchangeBundle,
+  type ObservationInterchangeImportCommitReceipt,
   type ObservationInterchangeImportDryRunReport,
 } from '../domain/observationInterchange';
 import {
+  commitOwnedObservationInterchangeImport,
   dryRunOwnedObservationInterchangeImport,
   exportOwnedObservationInterchangeBundle,
 } from '../services/firebaseService';
@@ -49,12 +53,16 @@ export const ObservationExchangePanel: React.FC<{ currentUser: ObserverUser }> =
   const [isWorking, setIsWorking] = useState(false);
   const [status, setStatus] = useState<Status>(null);
   const [report, setReport] = useState<ObservationInterchangeImportDryRunReport | null>(null);
+  const [pendingSerialized, setPendingSerialized] = useState<string | null>(null);
+  const [commitReceipt, setCommitReceipt] = useState<ObservationInterchangeImportCommitReceipt | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
 
   const handleExport = async () => {
     setIsWorking(true);
     setStatus(null);
     setReport(null);
+    setPendingSerialized(null);
+    setCommitReceipt(null);
     try {
       const bundle = await exportOwnedObservationInterchangeBundle(currentUser.uid, currentUser.email);
       const serialized = serializeObservationInterchangeBundle(bundle);
@@ -85,6 +93,8 @@ export const ObservationExchangePanel: React.FC<{ currentUser: ObserverUser }> =
     setSelectedFileName(file.name);
     setStatus(null);
     setReport(null);
+    setPendingSerialized(null);
+    setCommitReceipt(null);
     if (file.size > MAX_INTERCHANGE_FILE_BYTES) {
       const oversizedReport = invalidObservationInterchangeImportDryRunReport(
         currentUser.uid,
@@ -97,12 +107,14 @@ export const ObservationExchangePanel: React.FC<{ currentUser: ObserverUser }> =
 
     setIsWorking(true);
     try {
+      const serialized = await file.text();
       const result = await dryRunOwnedObservationInterchangeImport(
-        await file.text(),
+        serialized,
         currentUser.uid,
         currentUser.email,
       );
       setReport(result);
+      setPendingSerialized(result.valid ? serialized : null);
       setStatus({
         tone: result.valid ? 'success' : 'error',
         message: result.valid
@@ -111,6 +123,31 @@ export const ObservationExchangePanel: React.FC<{ currentUser: ObserverUser }> =
       });
     } catch (error) {
       setStatus({ tone: 'error', message: `import dry-runに失敗しました: ${exchangeErrorMessage(error, '現在の所有者データを取得できませんでした。')}` });
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  const handleCommit = async () => {
+    if (!pendingSerialized || !report?.valid) return;
+    setIsWorking(true);
+    setStatus(null);
+    try {
+      const receipt = await commitOwnedObservationInterchangeImport(
+        pendingSerialized,
+        currentUser.uid,
+      );
+      setCommitReceipt(receipt);
+      setPendingSerialized(null);
+      setStatus({
+        tone: 'success',
+        message: `import commitに成功しました。新規作成${receipt.created.total}件、同一内容の再利用${receipt.skippedIdentical.total}件です。`,
+      });
+    } catch (error) {
+      setStatus({
+        tone: 'error',
+        message: `import commitに失敗しました。Firestoreには部分適用していません: ${exchangeErrorMessage(error, 'インポートを反映できませんでした。')}`,
+      });
     } finally {
       setIsWorking(false);
     }
@@ -125,7 +162,7 @@ export const ObservationExchangePanel: React.FC<{ currentUser: ObserverUser }> =
             v{CURRENT_SCHEMA_VERSION} データ交換
           </h2>
           <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">
-            所有する正規化データを決定的JSONとしてexportし、JSONファイルをFirestoreへ書き込まずに構造・意味・所有者・衝突だけ検証します。
+            所有する正規化データを決定的JSONとしてexportし、importはdry-runで確認した後、明示操作で競合安全にFirestoreへ反映します。
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
@@ -147,6 +184,15 @@ export const ObservationExchangePanel: React.FC<{ currentUser: ObserverUser }> =
             {isWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
             import dry-run
           </button>
+          <button
+            type="button"
+            onClick={() => void handleCommit()}
+            disabled={isWorking || !pendingSerialized || !report?.valid}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+            Firestoreへ反映
+          </button>
           <input
             ref={fileInputRef}
             type="file"
@@ -159,7 +205,8 @@ export const ObservationExchangePanel: React.FC<{ currentUser: ObserverUser }> =
 
       <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-mono text-slate-500">
         <span className="rounded bg-slate-100 px-2 py-1">max {formatBytes(MAX_INTERCHANGE_FILE_BYTES)}</span>
-        <span className="rounded bg-slate-100 px-2 py-1">max {MAX_INTERCHANGE_RECORDS} records</span>
+        <span className="rounded bg-slate-100 px-2 py-1">dry-run max {MAX_INTERCHANGE_RECORDS} records</span>
+        <span className="rounded bg-slate-100 px-2 py-1">commit max {MAX_INTERCHANGE_COMMIT_WRITES} records / {MAX_INTERCHANGE_COMMIT_MEMBERSHIP_WRITES} memberships</span>
         {selectedFileName && <span className="max-w-full truncate rounded bg-slate-100 px-2 py-1">file: {selectedFileName}</span>}
       </div>
 
@@ -189,6 +236,18 @@ export const ObservationExchangePanel: React.FC<{ currentUser: ObserverUser }> =
               {report.errors.length > 8 && <li>ほか {report.errors.length - 8}件</li>}
             </ul>
           )}
+        </div>
+      )}
+
+      {commitReceipt && (
+        <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-950">
+          <div className="font-bold">import receipt</div>
+          <div className="mt-1 grid gap-1 text-[11px] sm:grid-cols-2">
+            <span>作成: {commitReceipt.created.total}件</span>
+            <span>同一内容の再利用: {commitReceipt.skippedIdentical.total}件</span>
+            <span className="font-mono break-all">SHA-256: {commitReceipt.bundleSha256}</span>
+            <span>確定時刻: {commitReceipt.committedAt}</span>
+          </div>
         </div>
       )}
     </section>

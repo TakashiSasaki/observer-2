@@ -272,8 +272,9 @@ metadata.
   `mine` feed and attachment picker, and only within a five-minute freshness
   window. Shared, authenticated, and public feeds require a current remote
   read so stale ACLs cannot expose revoked records.
-- Exchange export and import dry-run require remote reads; an incomplete cache
-  cannot be exported or used as the comparison baseline.
+- Exchange export, import dry-run, and import commit require remote reads; an
+  incomplete cache cannot be exported, used as the comparison baseline, or
+  treated as the transaction's current state.
 - Bounded reads use cursor pages of at most 100 documents and probe the next
   page when the configured maximum is reached. A snapshot is complete only
   when that probe finds no additional matching document. Regular feeds and the
@@ -315,9 +316,15 @@ The application now provides a bounded no-write exchange experience in `/app`:
 - owner, reference, deletion, collision, and practical size previews;
 - an explicit guarantee that the dry-run does not write to Firestore.
 
-The application does not yet provide authorized Firestore import writes,
-idempotency, or ownership remapping. Those policies must be decided together
-with the persistence importer.
+After a valid dry-run, the user may explicitly invoke an authorized Firestore
+import commit. The commit preserves the signed-in owner UID and performs one
+transaction: missing records are created, identical canonical records are
+idempotent no-ops, and different content under an existing ID rejects the
+whole operation. New memberships require active owner-owned endpoints. The
+commit accepts at most 500 bundle records and 9 new memberships, and reports a
+receipt containing the raw bundle SHA-256, commit time, and created/skipped
+counts. It never remaps ownership and never updates or deletes an existing
+canonical record.
 
 See `docs/data-contract-2.0.0.md` and `docs/work-packages.md`.
 
@@ -355,7 +362,8 @@ as ad hoc fields to observation schema 2.0.0.
 - persisted set views or embedded canonical children;
 - production-ready binary storage;
 - a complete external versioned API;
-- production-ready import writes;
+- unbounded or durable production import orchestration beyond the bounded
+  owner-preserving transaction;
 - a production-connected `/admin` surface;
 - recording the real Firestore/Auth M01–M03 acceptance beyond the in-memory `/test` harness;
 - completing the later Object/Marker domain inside schema 2.0.0.

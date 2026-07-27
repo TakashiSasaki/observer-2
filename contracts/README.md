@@ -78,3 +78,14 @@ npm run test:contracts
 C02 still does not implement a UUID resolver, public generated API, external
 `$ref`, Firestore import commit, or a generic profile independent of the
 Observer owner-scoped rules.
+
+### C03 — authorized owner-scoped import commit
+
+C03 adds the application persistence boundary without changing the immutable
+2.0.0 Schema, manifest, registry entry, or exchange payload. The commit keeps
+the signed-in owner UID, creates only missing records, skips identical
+canonical records, rejects ID-content conflicts and inactive endpoints, and
+uses one bounded Firestore transaction. It is an application operation rather
+than a new contract release. The corresponding Rules change only permits
+authenticated missing-document probes needed to distinguish create/no-op;
+existing ACL and write validation remain in force.
