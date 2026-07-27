@@ -343,3 +343,33 @@ test('a Membership transaction is allowed only for active same-owner endpoints',
   }));
 });
 
+test('an import-sized transaction rejects an inactive relation without partial writes', async () => {
+  await seedOwnedEndpoints(ids.observationSetA, ids.observationA, OWNER_UID);
+  await seed(['observations', ids.observationC], observationDocument(ids.observationC, OWNER_UID, 'private', [], {
+    deletedAt: new Date('2026-07-25T00:10:00.000Z'),
+    updatedAt: new Date('2026-07-25T00:10:00.000Z'),
+  }));
+
+  const ownerDb = authenticatedFirestore(OWNER_UID);
+  const newObservationRef = doc(ownerDb, 'observations', ids.observationB);
+  const validMembershipRef = doc(ownerDb, 'observationSetMemberships', `${ids.observationSetA}__${ids.observationA}`);
+  const inactiveMembershipRef = doc(ownerDb, 'observationSetMemberships', `${ids.observationSetA}__${ids.observationC}`);
+
+  await assertFails(runTransaction(ownerDb, async (transaction) => {
+    await Promise.all([
+      transaction.get(newObservationRef),
+      transaction.get(validMembershipRef),
+      transaction.get(inactiveMembershipRef),
+    ]);
+    transaction.set(newObservationRef, observationDocument(ids.observationB, OWNER_UID));
+    transaction.set(validMembershipRef, membershipDocument(ids.observationSetA, ids.observationA, OWNER_UID));
+    transaction.set(inactiveMembershipRef, membershipDocument(ids.observationSetA, ids.observationC, OWNER_UID));
+  }));
+
+  const [newObservation, validMembership] = await Promise.all([
+    ownerDb.doc(`observations/${ids.observationB}`).get(),
+    ownerDb.doc(`observationSetMemberships/${ids.observationSetA}__${ids.observationA}`).get(),
+  ]);
+  assert.equal(newObservation.exists, false);
+  assert.equal(validMembership.exists, false);
+});

@@ -33,7 +33,7 @@ One **iteration** in the estimate means one bounded change cycle:
 | WP03 | Firestore repository, queries, indexes | **implemented** | Three collections, query-plan module, composite indexes, persistence tests | Production-project index deployment is operational work |
 | WP04 | Security Rules and external Emulator tests | **implemented** | Rules enforce owner/shape/relation/time invariants; JDK 21 Actions passed | Preserve emulator pass for final release tree |
 | WP05 | UI | **implemented** | Existing-observation picker, attach, membership-only detach, set ACL and soft delete, explicit composite-capture mode | Execute M01–M03 and verify multi-observation usability |
-| WP06 | Interchange 2.0.0 and v1 policy | **partial** | JSON Schema, semantic codec, deterministic round-trip, owner export/download, no-write import dry-run, collision/ownership report, size limits | Decide and implement authorized Firestore import commit path |
+| WP06 | Interchange 2.0.0 and v1 policy | **implemented** | JSON Schema, semantic codec, deterministic round-trip, owner export/download, no-write import dry-run, owner-preserving conflict-safe import commit, receipt, size limits | Real-surface import acceptance and final cumulative ledger closeout |
 | WP07 | Legacy removal and final validation | **partial** | v1 write/read removal, fresh-empty read policy, strict remote integrity error, typed read failures, cursor-paged scope-bound complete snapshots, principal-scoped five-minute cache, no-partial relation reads, visible UI error state, hardened Rules | Real-surface manual acceptance, final acceptance record |
 
 The implementation evidence above does not mean the entire application roadmap
@@ -75,6 +75,24 @@ C02 does not implement Firestore import commit, a UUID Schema resolver, public
 generated API artifacts, `/dev/contracts`, external `$ref`, or a generic
 profile. The existing WP00–WP07 statuses and estimates remain unchanged.
 
+### C03 — authorized owner-scoped import commit
+
+C03 completes the persistence part of the exchange workflow without changing
+the accepted 2.0.0 payload, Schema, manifest, registry, or release identity:
+
+- imported `uid` values must equal the signed-in owner; no remapping exists;
+- missing records are created by their existing canonical IDs;
+- identical IDs with identical canonical records are idempotent no-ops;
+- identical IDs with different canonical content reject the entire operation;
+- new memberships require active owner-owned endpoints;
+- all candidate reads and creations occur in one Firestore transaction, with a
+  500-record total bound and a 9-new-membership Rules relation bound;
+- the explicit UI commit returns a receipt with the raw input SHA-256, commit
+  time, and created/skipped counts.
+
+C03 adds no resolver, public contract endpoint, remapping layer, durable audit
+collection, update/delete import behavior, or new contract release.
+
 ## 3. Completed requirement coverage
 
 The following behaviors have automated coverage:
@@ -94,6 +112,9 @@ The following behaviors have automated coverage:
 - owner-scoped deterministic export and download;
 - no-write import dry-run with structural/semantic errors, ownership, references,
   deletion counts, collision classification, and practical limits;
+- owner-preserving import commit with identical-record idempotency, conflict
+  rejection, inactive-endpoint rejection, atomic transaction bounds, and UI
+  receipt counts;
 - successful empty reads overriding stale cache;
 - malformed remote data surfacing as `RemoteDataIntegrityError`.
 - bounded-read snapshots record scope, principal, limit, result count, and
@@ -128,18 +149,17 @@ This change also completed the safe, no-write part of the exchange workflow:
 - the existing `TypesDocPage` raw-import regression is covered by a Vite type
   declaration.
 
-### Iteration 3 — authorized, conflict-safe import commit
+### C03 — authorized, conflict-safe import commit (completed in this change)
 
-Decide and deliver:
+The policy above is implemented in `src/domain/observationInterchange.ts` and
+`src/services/firebaseService.ts`, with the explicit commit action in the app
+exchange panel. The pure plan tests cover owner mismatch, ID-content conflict,
+inactive endpoints, idempotent records, and both transaction bounds. The
+Firestore Rules already enforce active owner-owned endpoints for new
+memberships; no Rules change was needed.
 
-- whether imported `uid` values must equal the signed-in user or are remapped;
-- identical-ID identical-record idempotency;
-- identical-ID different-record conflict rejection;
-- all-or-nothing versus bounded-batch commit behavior;
-- import receipt and recovery semantics.
-
-Then implement the chosen policy in repository code, Rules where needed,
-Emulator tests, and UI/API integration.
+Remaining acceptance is the real authenticated UI/Firestore flow and the
+final cumulative ledger closeout.
 
 ### Iteration 4 — remote-read and cache hardening
 
@@ -199,9 +219,9 @@ Deliver:
 The central estimate from the PR #13 baseline is:
 
 - **6 iterations total after PR #13**;
-- **3 further iterations after this change is applied by AI Studio**.
+- **2 further iterations after this change is applied by AI Studio**.
 
-Reasonable range after this change: **2–5 further iterations**.
+Reasonable range after this change: **1–4 further iterations**.
 
 The lower bound assumes the import ownership/conflict policy is decided before
 implementation and manual checks find no material defect. The upper bound
@@ -223,8 +243,8 @@ breakdown and a materially larger estimate.
 - External APIs are not yet organized under a versioned `/api/vN` contract.
 - Observation update and soft delete exist in the service but are not fully
   exposed in the UI.
-- Import commit policy and Firestore persistence are intentionally not yet
-  implemented.
+- The owner-preserving import commit is bounded to one transaction; real
+  authenticated UI/Firestore acceptance remains outstanding.
 - Membership reordering has a Rules concept (`position`) but no current UI.
 - The JSON Schema declares email format while runtime and Rules validation
   enforce only string/list semantics.

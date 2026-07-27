@@ -324,9 +324,10 @@ fails rather than exporting an incomplete bounded prefix.
 
 Successful entity mutations invalidate both owner snapshot scopes. Shared,
 authenticated, and public feeds do not use stale cache fallback because cached
-ACLs are not an authorization source. Interchange export and import dry-run
-require remote reads and therefore cannot silently operate on an incomplete
-cache. The cache is not a full synchronized database or migration source.
+ACLs are not an authorization source. Interchange export, import dry-run, and
+import commit require remote reads and therefore cannot silently operate on an
+incomplete cache. The cache is not a full synchronized database or migration
+source.
 
 ## 8. Interchange bundle
 
@@ -401,17 +402,26 @@ writes to Firestore. Owner-scoped source reads use cursor pages and reject a
 non-empty page beyond the exchange bound. The current limits are 2,000,000
 UTF-8 bytes and 1,000 total records across the three arrays.
 
-A persistence importer still needs explicit decisions for:
+The current authorized commit policy is now fixed:
 
-- owner preservation or remapping;
-- ID collision semantics;
-- identical-record idempotency;
-- conflicting-record rejection;
-- partial versus atomic commit;
-- maximum bundle size and batching;
-- authorization;
-- audit receipt;
-- failure recovery.
+- The signed-in `ownerUid` must equal every imported record's `uid`; no UID
+  remapping is performed.
+- A missing record is created with its canonical ID. An existing record with
+  the same ID and the same canonical serialization is an idempotent no-op.
+  An existing record with different canonical content rejects the whole
+  operation.
+- A new membership may reference only active, owner-owned endpoints. Existing
+  soft-deleted relation history is not rewritten.
+- The commit reads all candidate documents and applies creations in one
+  Firestore transaction. It never updates or deletes an existing canonical
+  record, and a failed validation or Rules check leaves no partial import.
+- The dry-run limit remains 2,000,000 UTF-8 bytes and 1,000 total records. The
+  single-transaction commit is additionally limited to 500 bundle records and
+  9 new membership writes to stay within the current Rules `getAfter()`
+  relation bound.
+- The UI/service receipt records the owner UID, raw input SHA-256, commit time,
+  and created/skipped counts. No durable receipt collection or UID remapping
+  mechanism is introduced.
 
 ## 9. Versioning policy
 

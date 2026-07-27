@@ -6,9 +6,12 @@ import {
   assertObservationInterchangeBundle,
   createObservationInterchangeBundle,
   invalidObservationInterchangeImportDryRunReport,
+  MAX_INTERCHANGE_COMMIT_MEMBERSHIP_WRITES,
+  MAX_INTERCHANGE_COMMIT_WRITES,
   MAX_INTERCHANGE_FILE_BYTES,
   MAX_INTERCHANGE_RECORDS,
   parseObservationInterchangeBundle,
+  planObservationInterchangeImportCommit,
   serializeObservationInterchangeBundle,
 } from '../../src/domain/observationInterchange.ts';
 import {
@@ -229,6 +232,110 @@ test('import dry-run blocks foreign owners and different records with the same I
   assert.equal(report.collisions.conflicting, 1);
   assert.equal(report.errors.some((message) => message.includes('uid')), true);
   assert.equal(report.errors.some((message) => message.includes('conflicts')), true);
+});
+
+test('import commit planning creates missing records and skips identical records', () => {
+  const { first, second, set, memberships } = fixture();
+  const bundle = createObservationInterchangeBundle({
+    exportedAt,
+    observations: [first, second],
+    observationSets: [set],
+    memberships,
+  });
+  const plan = planObservationInterchangeImportCommit(
+    bundle,
+    { observations: [first], observationSets: [set], memberships: [memberships[0]] },
+    ownerId,
+  );
+
+  assert.equal(plan.valid, true);
+  assert.deepEqual(plan.created.observations.map((record) => record.id), [second.id]);
+  assert.deepEqual(plan.created.observationSets, []);
+  assert.deepEqual(plan.created.memberships.map((record) => record.id), [memberships[1].id]);
+  assert.deepEqual(plan.skippedIdentical, { observations: 1, observationSets: 1, memberships: 1, total: 3 });
+});
+
+test('import commit planning rejects foreign owners, conflicts, and memberships to deleted endpoints', () => {
+  const { first, second, set, memberships } = fixture();
+  const foreignBundle = createObservationInterchangeBundle({
+    exportedAt,
+    observations: [{ ...first, uid: 'other-owner' }],
+    observationSets: [],
+    memberships: [],
+  });
+  const foreignPlan = planObservationInterchangeImportCommit(foreignBundle, {
+    observations: [], observationSets: [], memberships: [],
+  }, ownerId);
+  assert.equal(foreignPlan.valid, false);
+  assert.equal(foreignPlan.errors[0]?.code, 'IMPORT_OWNER_MISMATCH');
+
+  const conflictBundle = createObservationInterchangeBundle({
+    exportedAt,
+    observations: [first],
+    observationSets: [],
+    memberships: [],
+  });
+  const conflictPlan = planObservationInterchangeImportCommit(conflictBundle, {
+    observations: [{ ...first, title: 'different current record' }], observationSets: [], memberships: [],
+  }, ownerId);
+  assert.equal(conflictPlan.valid, false);
+  assert.equal(conflictPlan.errors[0]?.code, 'IMPORT_CONFLICT');
+
+  const deletedObservation = { ...second, deletedAt: exportedAt, updatedAt: exportedAt };
+  const deletedMembership = {
+    ...memberships[0],
+    observationId: deletedObservation.id,
+    id: `${set.id}__${deletedObservation.id}`,
+  };
+  const inactiveBundle = createObservationInterchangeBundle({
+    exportedAt,
+    observations: [deletedObservation],
+    observationSets: [set],
+    memberships: [deletedMembership],
+  });
+  const inactivePlan = planObservationInterchangeImportCommit(inactiveBundle, {
+    observations: [], observationSets: [], memberships: [],
+  }, ownerId);
+  assert.equal(inactivePlan.valid, false);
+  assert.equal(inactivePlan.errors[0]?.code, 'IMPORT_INACTIVE_ENDPOINT');
+});
+
+test('import commit planning preserves the atomic and Rules-safe write bounds', () => {
+  const tooManyRecords = createObservationInterchangeBundle({
+    exportedAt,
+    observations: Array.from({ length: MAX_INTERCHANGE_COMMIT_WRITES + 1 }, (_, index) => (
+      observation(`018fd116-8cf0-7def-8abc-${index.toString(16).padStart(12, '0')}`)
+    )),
+    observationSets: [],
+    memberships: [],
+  });
+  const tooManyPlan = planObservationInterchangeImportCommit(tooManyRecords, {
+    observations: [], observationSets: [], memberships: [],
+  }, ownerId);
+  assert.equal(tooManyPlan.valid, false);
+  assert.equal(tooManyPlan.errors.some((error) => error.code === 'IMPORT_WRITE_LIMIT'), true);
+  assert.equal(MAX_INTERCHANGE_COMMIT_MEMBERSHIP_WRITES, 9);
+
+  const membershipSet = observationSet('018fd116-8cf0-7def-8abc-1234567890b0');
+  const membershipObservations = Array.from({ length: MAX_INTERCHANGE_COMMIT_MEMBERSHIP_WRITES + 1 }, (_, index) => (
+    observation(`018fd116-8cf0-7def-8abc-${(index + 20).toString(16).padStart(12, '0')}`)
+  ));
+  const tooManyMemberships = createObservationInterchangeBundle({
+    exportedAt,
+    observations: membershipObservations,
+    observationSets: [membershipSet],
+    memberships: membershipObservations.map((record, position) => createMembership({
+      observationSet: membershipSet,
+      observation: record,
+      position,
+      createdAt,
+    })),
+  });
+  const tooManyMembershipsPlan = planObservationInterchangeImportCommit(tooManyMemberships, {
+    observations: [], observationSets: [], memberships: [],
+  }, ownerId);
+  assert.equal(tooManyMembershipsPlan.valid, false);
+  assert.equal(tooManyMembershipsPlan.errors.some((error) => error.code === 'IMPORT_MEMBERSHIP_WRITE_LIMIT'), true);
 });
 
 test('invalid import dry-run report keeps parse failures visible to the caller', () => {

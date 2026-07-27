@@ -10,6 +10,8 @@ import {
   startAfter,
   Timestamp,
   type DocumentData,
+  type DocumentSnapshot,
+  type DocumentReference,
   type QueryDocumentSnapshot,
   type QueryConstraint,
   where,
@@ -65,8 +67,11 @@ import {
   createObservationInterchangeBundle,
   invalidObservationInterchangeImportDryRunReport,
   MAX_INTERCHANGE_RECORDS,
+  ObservationInterchangeImportCommitError,
   parseObservationInterchangeBundle,
+  planObservationInterchangeImportCommit,
   type ObservationInterchangeBundle,
+  type ObservationInterchangeImportCommitReceipt,
   type ObservationInterchangeImportDryRunReport,
 } from '../domain/observationInterchange';
 import {
@@ -710,10 +715,167 @@ export async function exportOwnedObservationInterchangeBundle(
   });
 }
 
+type ImportKind = 'observations' | 'observationSets' | 'memberships';
+type ImportRecord = Observation | ObservationSet | ObservationSetMembership;
+
+type ImportCandidate = {
+  kind: ImportKind;
+  index: number;
+  id: string;
+  record: ImportRecord;
+  ref: DocumentReference;
+};
+
+function importCandidates(bundle: ObservationInterchangeBundle): ImportCandidate[] {
+  return [
+    ...bundle.observations.map((record, index) => ({
+      kind: 'observations' as const,
+      index,
+      id: record.id,
+      record,
+      ref: doc(db, FIRESTORE_COLLECTIONS.observations, record.id),
+    })),
+    ...bundle.observationSets.map((record, index) => ({
+      kind: 'observationSets' as const,
+      index,
+      id: record.id,
+      record,
+      ref: doc(db, FIRESTORE_COLLECTIONS.observationSets, record.id),
+    })),
+    ...bundle.memberships.map((record, index) => ({
+      kind: 'memberships' as const,
+      index,
+      id: record.id,
+      record,
+      ref: doc(db, FIRESTORE_COLLECTIONS.memberships, record.id),
+    })),
+  ];
+}
+
+function currentImportRecord(
+  candidate: ImportCandidate,
+  snapshot: DocumentSnapshot,
+): ImportRecord | null {
+  if (!snapshot.exists()) return null;
+  if (candidate.kind === 'observations') return observationFromFirestore(snapshot.id, snapshot.data());
+  if (candidate.kind === 'observationSets') return observationSetFromFirestore(snapshot.id, snapshot.data());
+  return membershipFromFirestore(snapshot.id, snapshot.data());
+}
+
+function firestoreDataForImportCandidate(candidate: ImportCandidate): Record<string, unknown> {
+  if (candidate.kind === 'observations') return normalizeOptionalFields(candidate.record as Observation);
+  if (candidate.kind === 'observationSets') return normalizeOptionalFields(candidate.record as ObservationSet);
+  return membershipToFirestore(candidate.record as ObservationSetMembership);
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(value),
+  );
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * Commits an owner-scoped import as one conflict-checked Firestore
+ * transaction. Missing records are created; identical records are no-ops;
+ * existing records with different canonical content abort the transaction.
+ */
+export async function commitOwnedObservationInterchangeImport(
+  serialized: string,
+  ownerUid: string,
+): Promise<ObservationInterchangeImportCommitReceipt> {
+  if (!auth.currentUser || auth.currentUser.uid !== ownerUid) {
+    throw new Error('The signed-in user must own the import commit context.');
+  }
+
+  let bundle: ObservationInterchangeBundle;
+  try {
+    bundle = parseObservationInterchangeBundle(serialized);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'The import file could not be validated.';
+    throw new ObservationInterchangeImportCommitError('IMPORT_INVALID_BUNDLE', message);
+  }
+
+  const bundleSha256 = await sha256Hex(serialized);
+  const candidates = importCandidates(bundle);
+  const committed = await runTransaction(db, async (transaction) => {
+    const snapshots = await Promise.all(candidates.map((candidate) => transaction.get(candidate.ref)));
+    const existing = {
+      observations: [] as Observation[],
+      observationSets: [] as ObservationSet[],
+      memberships: [] as ObservationSetMembership[],
+    };
+    for (let index = 0; index < candidates.length; index += 1) {
+      const current = currentImportRecord(candidates[index], snapshots[index]);
+      if (!current) continue;
+      if (candidates[index].kind === 'observations') existing.observations.push(current as Observation);
+      if (candidates[index].kind === 'observationSets') existing.observationSets.push(current as ObservationSet);
+      if (candidates[index].kind === 'memberships') existing.memberships.push(current as ObservationSetMembership);
+    }
+
+    const plan = planObservationInterchangeImportCommit(bundle, existing, ownerUid);
+    if (!plan.valid) {
+      const firstError = plan.errors[0];
+      throw new ObservationInterchangeImportCommitError(
+        firstError?.code ?? 'IMPORT_INVALID_BUNDLE',
+        firstError?.message ?? 'The import bundle is not eligible for this transaction.',
+        firstError?.instancePath,
+      );
+    }
+
+    const createdKeys = new Set([
+      ...plan.created.observations.map((record) => `observations:${record.id}`),
+      ...plan.created.observationSets.map((record) => `observationSets:${record.id}`),
+      ...plan.created.memberships.map((record) => `memberships:${record.id}`),
+    ]);
+    for (const candidate of candidates) {
+      if (createdKeys.has(`${candidate.kind}:${candidate.id}`)) {
+        transaction.set(candidate.ref, firestoreDataForImportCandidate(candidate));
+      }
+    }
+
+    return {
+      created: {
+        observations: plan.created.observations.length,
+        observationSets: plan.created.observationSets.length,
+        memberships: plan.created.memberships.length,
+        total: plan.created.observations.length + plan.created.observationSets.length + plan.created.memberships.length,
+      },
+      skippedIdentical: plan.skippedIdentical,
+    };
+  });
+
+  const cache = mergeNormalizedObservationCache(getLocalCache(ownerUid), {
+    observations: bundle.observations,
+    observationSets: bundle.observationSets,
+    memberships: bundle.memberships,
+  });
+  saveLocalCache(cache, ownerUid);
+  if (committed.created.total > 0) invalidateLocalCacheSnapshots(ownerUid);
+
+  return {
+    ownerUid,
+    bundleSha256,
+    committedAt: new Date().toISOString(),
+    counts: {
+      observations: bundle.observations.length,
+      observationSets: bundle.observationSets.length,
+      memberships: bundle.memberships.length,
+      total: candidates.length,
+    },
+    created: committed.created,
+    skippedIdentical: committed.skippedIdentical,
+  };
+}
+
 /**
  * Parses and compares an import file against current owner records. This is a
  * dry-run only: it performs reads and local validation but never writes to
- * Firestore. The persistence commit policy is intentionally a later package.
+ * Firestore. The separate explicit commit function above is the only import
+ * path that may create Firestore records.
  */
 export async function dryRunOwnedObservationInterchangeImport(
   serialized: string,
