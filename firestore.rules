@@ -189,7 +189,11 @@ service cloud.firestore {
     }
 
     match /observations/{observationId} {
-      allow read: if canReadEntity(resource.data);
+      // The owner-scoped import transaction must distinguish a missing
+      // candidate from an existing document before it creates anything.
+      // Missing-document probes reveal no data; existing reads keep the ACL.
+      allow read: if (resource == null && isAuthenticated())
+        || (resource != null && canReadEntity(resource.data));
       allow create: if isAuthenticated()
         && request.resource.data.uid == request.auth.uid
         && validNewObservation(request.resource.data, observationId);
@@ -202,7 +206,10 @@ service cloud.firestore {
     }
 
     match /observationSets/{observationSetId} {
-      allow read: if canReadEntity(resource.data);
+      // See the corresponding Observation rule: authenticated missing
+      // candidate probes support an atomic import without weakening ACL reads.
+      allow read: if (resource == null && isAuthenticated())
+        || (resource != null && canReadEntity(resource.data));
       allow create: if isAuthenticated()
         && request.resource.data.uid == request.auth.uid
         && validNewObservationSet(request.resource.data, observationSetId);

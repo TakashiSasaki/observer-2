@@ -155,8 +155,11 @@ The policy above is implemented in `src/domain/observationInterchange.ts` and
 `src/services/firebaseService.ts`, with the explicit commit action in the app
 exchange panel. The pure plan tests cover owner mismatch, ID-content conflict,
 inactive endpoints, idempotent records, and both transaction bounds. The
-Firestore Rules already enforce active owner-owned endpoints for new
-memberships; no Rules change was needed.
+Firestore Rules continue to enforce active owner-owned endpoints for new
+memberships. C03 also allows authenticated missing-document probes for
+Observation and ObservationSet candidates; existing-document ACL reads and
+all write validation remain unchanged. The Emulator regression verifies that
+an invalid relation rejects the whole transaction without partial writes.
 
 Remaining acceptance is the real authenticated UI/Firestore flow and the
 final cumulative ledger closeout.

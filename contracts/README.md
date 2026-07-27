@@ -86,4 +86,6 @@ C03 adds the application persistence boundary without changing the immutable
 the signed-in owner UID, creates only missing records, skips identical
 canonical records, rejects ID-content conflicts and inactive endpoints, and
 uses one bounded Firestore transaction. It is an application operation rather
-than a new contract release.
+than a new contract release. The corresponding Rules change only permits
+authenticated missing-document probes needed to distinguish create/no-op;
+existing ACL and write validation remain in force.
