@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "2.0.0",
+  "exportedAt": "2026-07-25T12:30:00.000Z",
+  "observations": [
+    {
+      "id": "018fd116-8cf0-7def-8abc-1234567890ab",
+      "uid": "example-owner",
+      "type": "manual",
+      "title": "Example observation",
+      "summary": "",
+      "rawContent": "example content",
+      "visibility": "private",
+      "allowedEmails": [],
+      "metadata": {},
+      "schemaVersion": "2.0.0",
+      "createdAt": "2026-07-25T12:00:00.000Z",
+      "updatedAt": "2026-07-25T12:00:00.000Z",
+      "deletedAt": null
+    }
+  ],
+  "observationSets": [
+    {
+      "id": "018fd116-8cf0-7def-8abc-1234567890ac",
+      "uid": "example-owner",
+      "type": "manual",
+      "title": "Example set",
+      "summary": "",
+      "rawContent": "example content",
+      "visibility": "private",
+      "allowedEmails": [],
+      "tags": [],
+      "metadata": {},
+      "schemaVersion": "2.0.0",
+      "createdAt": "2026-07-25T12:00:00.000Z",
+      "updatedAt": "2026-07-25T12:00:00.000Z",
+      "deletedAt": null
+    }
+  ],
+  "memberships": [
+    {
+      "id": "018fd116-8cf0-7def-8abc-1234567890ac__018fd116-8cf0-7def-8abc-1234567890ab",
+      "observationSetId": "018fd116-8cf0-7def-8abc-1234567890ac",
+      "observationId": "018fd116-8cf0-7def-8abc-1234567890ab",
+      "uid": "example-owner",
+      "position": 0,
+      "schemaVersion": "2.0.0",
+      "createdAt": "2026-07-25T12:00:00.000Z"
+    }
+  ]
+}

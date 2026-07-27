@@ -48,11 +48,32 @@ records release `2.0.0` as the `observer-owner-scoped` profile, and assigns the
 fixed UUIDv4 Schema ID
 `2f1fd347-e99b-477e-884a-86a7dbb0358b` (`urn:uuid:` in JSON Schema `$id`).
 
-C01 deliberately leaves semantic validation and deterministic canonicalization
-in `src/domain/observationInterchange.ts`, does not add `schemaId` to exchange
+C01 deliberately left semantic validation and deterministic canonicalization
+in `src/domain/observationInterchange.ts`; it did not add `schemaId` to exchange
 payloads, and does not implement a Schema resolver, external `$ref`, generated
 public API artifacts, or Firestore import commit. The registry and release
 manifest are checked by `npm run contracts:check`.
+
+### C02 — reference validation and conformance evidence
+
+C02 adds the first executable contract package without changing the accepted
+2.0.0 payload or its immutable Schema and manifest:
+
+- Ajv Draft 2020-12 validation with `ajv-formats` for the release Schema and
+  each canonical resource definition;
+- independent semantic validation for deterministic membership IDs, references,
+  owner equality, `shared`/`allowedEmails`, timestamp ordering, and runtime JSON
+  compatibility;
+- stable diagnostic codes and RFC 6901 JSON Pointer locations;
+- contract-owned types and canonicalization helpers, with the existing
+  `src/domain/observationInterchange.ts` API retained as a compatibility
+  wrapper;
+- non-normative minimal examples and release conformance vectors executed by
+  `npm run test:contracts`.
+
+C02 does not implement Firestore import commit, a UUID Schema resolver, public
+generated API artifacts, `/dev/contracts`, external `$ref`, or a generic
+profile. The existing WP00–WP07 statuses and estimates remain unchanged.
 
 ## 3. Completed requirement coverage
 

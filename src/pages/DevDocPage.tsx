@@ -76,10 +76,14 @@ const workPackageRows = [
 ];
 
 const sourceRows = [
-  ['型', 'src/types.ts'],
+  ['契約型', 'src/contracts/types.ts → src/types.ts'],
+  ['アプリ投影・型入口', 'src/types.ts'],
   ['ドメイン不変条件', 'src/domain/observationDomain.ts'],
   ['cache scope/freshness', 'src/domain/cachePolicy.ts'],
-  ['交換意味検証', 'src/domain/observationInterchange.ts'],
+  ['交換構造検証・診断', 'src/contracts/validator.ts / diagnostics.ts'],
+  ['交換意味検証', 'src/contracts/semanticValidation.ts'],
+  ['交換canonicalization', 'src/contracts/canonicalize.ts'],
+  ['交換互換API', 'src/domain/observationInterchange.ts'],
   ['契約レジストリ', 'contracts/registry.json'],
   ['交換構造', 'contracts/observer-observation-interchange/releases/2.0.0/schema.json'],
   ['Firestore操作', 'src/services/firebaseService.ts'],
